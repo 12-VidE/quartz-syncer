@@ -224,6 +224,13 @@ export default class Publisher {
 				return this.settings.useCanvas;
 			}
 
+			if (
+				f.file.path.endsWith(".excalidraw") ||
+				f.file.path.endsWith(".excalidraw.md")
+			) {
+				return this.settings.useExcalidraw;
+			}
+
 			return isPublishFrontmatterValid(
 				this.settings.publishFrontmatterKey,
 				f.frontmatter,

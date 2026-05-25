@@ -174,6 +174,13 @@ export class PublishFile {
 			return this.settings.useCanvas;
 		}
 
+		if (
+			this.file.name.endsWith(".excalidraw") ||
+			this.file.name.endsWith(".excalidraw.md")
+		) {
+			return this.settings.useExcalidraw;
+		}
+
 		return hasPublishFlag(
 			this.settings.publishFrontmatterKey,
 			this.frontmatter,
