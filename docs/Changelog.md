@@ -2,7 +2,7 @@
 title: Roadmap and Changelog
 description: Changelog and feature roadmap for Quartz Syncer.
 created: 2025-05-16T12:59:31Z+0200
-modified: 2026-05-25T23:26:53Z+0200
+modified: 2026-05-26T00:33:40Z+0200
 publish: true
 ---
 
@@ -16,6 +16,10 @@ publish: true
 ## Someday
 
 ## Releases
+
+### Version 1.15.3
+
+- Implemented `extended-metadata-cache` for faster publishable files lookup performance.
 
 ### Version 1.15.2
 
