@@ -1,4 +1,4 @@
-import { Notice, Platform, Plugin, Workspace } from "obsidian";
+import { Notice, Plugin, Workspace } from "obsidian";
 import Publisher from "./src/publisher/Publisher";
 import QuartzSyncerSettings from "./src/models/settings";
 import { PublicationCenter } from "src/views/PublicationCenter/PublicationCenter";
@@ -336,36 +336,6 @@ export default class QuartzSyncer extends Plugin {
 	 * These commands can be triggered from the command palette or ribbon icon.
 	 */
 	async addCommands() {
-		if (this.settings["ENABLE_DEVELOPER_TOOLS"] && Platform.isDesktop) {
-			Logger.info("Developer tools enabled");
-
-			const publisher = new Publisher(
-				this.app,
-				this,
-				this.app.vault,
-				this.app.metadataCache,
-				this.settings,
-				this.datastore,
-			);
-
-			import("./src/test/snapshot/generateSyncerSnapshot")
-				.then((snapshotGen) => {
-					this.addCommand({
-						id: "generate-snapshot",
-						name: "Generate snapshot",
-						callback: async () => {
-							await snapshotGen.generateSyncerSnapshot(
-								this.settings,
-								publisher,
-							);
-						},
-					});
-				})
-				.catch((e) => {
-					Logger.error("Unable to load generateSyncerSnapshot", e);
-				});
-		}
-
 		this.addCommand({
 			id: "open-publish-modal",
 			name: "Open publication center",
