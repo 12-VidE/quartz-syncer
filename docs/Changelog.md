@@ -19,7 +19,7 @@ publish: true
 
 ### Version 1.15.3
 
-- Implemented `extended-metadata-cache` for faster publishable files lookup performance.
+- Implemented `obsidian-extended-metadatacache` for faster publishable files lookup performance.
 
 ### Version 1.15.2
 
