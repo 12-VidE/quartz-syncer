@@ -116,7 +116,7 @@ export default class SettingView {
 		});
 
 		const gitTab = this.createTab("Git", "git-branch");
-		const quartzTab = this.createTab("Quartz", "quartz-syncer-icon");
+		const quartzTab = this.createTab("Quartz", "leaf");
 		const frontmatterTab = this.createTab("Frontmatter", "archive");
 		const integrationTab = this.createTab("Integration", "cable");
 		const performanceTab = this.createTab("Performance", "zap");

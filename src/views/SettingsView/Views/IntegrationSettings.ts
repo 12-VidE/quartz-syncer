@@ -103,7 +103,7 @@ export class IntegrationSettings extends PluginSettingTab {
 			datacore:
 				"Converts Datacore queries into Quartz-compatible markdown. Currently experimental.",
 			excalidraw:
-				"Converts Excalidraw drawings into Quartz-compatible format.",
+				"Syncs Excalidraw drawings to Quartz. Rendering is handled by the Quartz Excalidraw plugin.",
 			"fantasy-statblocks":
 				"Converts Fantasy Statblocks queries into Quartz-compatible format.",
 			"auto-card-link":
