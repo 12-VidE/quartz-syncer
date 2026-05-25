@@ -8,6 +8,7 @@ import QuartzSyncerSiteManager from "src/repositoryConnection/QuartzSyncerSiteMa
 import { QuartzSyncerSettingTab } from "./src/views/QuartzSyncerSettingTab";
 import { DataStore } from "src/publishFile/DataStore";
 import { SecretStorageService } from "src/utils/SecretStorageService";
+import { ExtendedCacheService } from "src/services/ExtendedCacheService";
 import Logger from "js-logger";
 import { registerCliHandlers } from "src/cli/registerCliHandlers";
 
@@ -152,6 +153,7 @@ export default class QuartzSyncer extends Plugin {
 	appVersion!: string;
 	datastore!: DataStore;
 	secretStorageService!: SecretStorageService;
+	extendedCache!: ExtendedCacheService;
 
 	publishModal!: PublicationCenter;
 
@@ -163,6 +165,7 @@ export default class QuartzSyncer extends Plugin {
 		this.appVersion = this.manifest.version;
 
 		await this.loadSettings();
+		this.extendedCache = new ExtendedCacheService(this.app);
 
 		if (this.settings.logLevel) Logger.setLevel(this.settings.logLevel);
 
@@ -188,6 +191,8 @@ export default class QuartzSyncer extends Plugin {
 	 * Cleans up resources and saves settings.
 	 */
 	onunload() {
+		this.extendedCache?.destroy();
+
 		// Remove the datastore cache if it exists.
 		// This will also clear the cache when the plugin is updated.
 		if (!this.settings.persistCache) {
@@ -568,6 +573,7 @@ export default class QuartzSyncer extends Plugin {
 				this.app.metadataCache,
 				this.settings,
 				this.datastore,
+				this.extendedCache,
 			);
 
 			const publishStatusManager = new PublishStatusManager(
