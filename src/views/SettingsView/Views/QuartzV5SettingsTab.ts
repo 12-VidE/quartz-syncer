@@ -1,12 +1,12 @@
 import {
 	Setting,
 	App,
-	PluginSettingTab,
+	SettingPage,
 	Notice,
 	normalizePath,
 	requestUrl,
+	setIcon,
 } from "obsidian";
-import SettingView from "src/views/SettingsView/SettingView";
 import QuartzSyncer from "main";
 import QuartzSyncerSiteManager from "src/repositoryConnection/QuartzSyncerSiteManager";
 import type { QuartzConfigService } from "src/quartz/QuartzConfigService";
@@ -17,15 +17,12 @@ import type {
 	QuartzPluginSource,
 	QuartzVersion,
 	QuartzLockFileEntry,
-	QuartzLayoutPosition,
-	QuartzDisplayMode,
 	QuartzGlobalLayout,
 	QuartzPageType,
 	QuartzColorScheme,
 } from "src/quartz/QuartzConfigTypes";
 import {
 	getPluginName,
-	getPluginSourceKey,
 	resolveSourceToGitUrl,
 } from "src/quartz/QuartzPluginUtils";
 import { QuartzPluginManager } from "src/quartz/QuartzPluginManager";
@@ -46,23 +43,11 @@ import { QuartzPluginManifestService } from "src/quartz/QuartzPluginManifestServ
 import type { QuartzPluginManifest } from "src/quartz/QuartzConfigTypes";
 import { QuartzPluginRegistry } from "src/quartz/QuartzPluginRegistry";
 import { PluginBrowserModal } from "src/views/PluginBrowser/PluginBrowserModal";
+import { ConfirmModal } from "src/ui/ConfirmModal";
+import { PluginOptionsModal } from "src/views/PluginOptionsModal";
 import Logger from "js-logger";
 
 const logger = Logger.get("quartz-v5-settings");
-
-const LAYOUT_POSITIONS: QuartzLayoutPosition[] = [
-	"left",
-	"right",
-	"beforeBody",
-	"afterBody",
-	"body",
-];
-
-const DISPLAY_MODES: QuartzDisplayMode[] = [
-	"all",
-	"mobile-only",
-	"desktop-only",
-];
 
 const DEFAULT_LIGHT_COLORS: QuartzColorScheme = {
 	light: "#faf8f8",
@@ -103,11 +88,9 @@ const PAGE_TYPES: QuartzPageType[] = [
  * Displays version info, editable site config fields, and the plugin list.
  * Changes are committed and pushed to the repository on save.
  */
-export class QuartzV5SettingsTab extends PluginSettingTab {
-	app: App;
-	plugin: QuartzSyncer;
-	settings: SettingView;
-	private settingsRootElement: HTMLElement;
+export class QuartzV5Page extends SettingPage {
+	private app: App;
+	private plugin: QuartzSyncer;
 
 	private siteManager: QuartzSyncerSiteManager | null = null;
 	private configService: QuartzConfigService | null = null;
@@ -123,7 +106,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 	private manifestService: QuartzPluginManifestService | null = null;
 	private cachedManifests: Map<string, QuartzPluginManifest | null> =
 		new Map();
-	private expandedPlugins: Set<string> = new Set();
+	private collapsedSections: Set<string> = new Set();
 	private pluginRegistry = new QuartzPluginRegistry();
 	private cachedThemesJson: Record<
 		string,
@@ -133,46 +116,61 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			variations: { name: string; injects: unknown }[];
 		}
 	> | null = null;
+	private searchQuery = "";
+	private searchableSettings: Array<{
+		containerEl: HTMLElement;
+		name: string;
+		description: string;
+	}> = [];
+	private searchResultsEl: HTMLElement | null = null;
+	private noResultsEl: HTMLElement | null = null;
+	private saveButtonEl: HTMLButtonElement | null = null;
 	private isLoading = false;
 	private isSaving = false;
 	private isCheckingUpdates = false;
 	private isCheckingUpgrade = false;
 	private isUpgrading = false;
+	private isDirty = false;
 	private pluginManager = new QuartzPluginManager();
 
-	constructor(
-		app: App,
-		plugin: QuartzSyncer,
-		settings: SettingView,
-		settingsRootElement: HTMLElement,
-	) {
-		super(app, plugin);
+	constructor(app: App, plugin: QuartzSyncer) {
+		super();
 		this.app = app;
 		this.plugin = plugin;
-		this.settings = settings;
-		this.settingsRootElement = settingsRootElement;
+		this.title = "Quartz";
 	}
 
 	display(): void {
-		this.settingsRootElement.empty();
-		this.settingsRootElement.addClass("quartz-syncer-github-settings");
-
-		this.settings.settings.lastUsedSettingsTab = "quartz";
-		void this.settings.plugin.saveSettings();
+		this.containerEl.empty();
+		this.searchableSettings = [];
+		this.searchResultsEl = null;
+		this.noResultsEl = null;
+		this.saveButtonEl = null;
 
 		this.renderQuartzHeader();
 		this.renderContentFolderSetting();
+		this.renderSearchBar();
 
 		if (this.cachedConfig) {
 			this.renderV5Content();
+			this.applySearchFilter(this.searchQuery);
 		} else {
 			this.renderLoading();
 			void this.loadV5Data();
 		}
 	}
 
+	hide(): void {
+		this.isLoading = false;
+		this.isSaving = false;
+		this.isCheckingUpdates = false;
+		this.isCheckingUpgrade = false;
+		this.isUpgrading = false;
+		this.isDirty = false;
+	}
+
 	private renderQuartzHeader(): void {
-		new Setting(this.settingsRootElement)
+		new Setting(this.containerEl)
 			.setName("Quartz")
 			.setDesc(
 				"Quartz Syncer will apply these settings to your Quartz notes.",
@@ -181,7 +179,9 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 	}
 
 	private renderContentFolderSetting(): void {
-		new Setting(this.settingsRootElement)
+		const contentFolderWrapper = this.containerEl.createDiv();
+
+		new Setting(contentFolderWrapper)
 			.setName("Content folder")
 			.setDesc(
 				'The folder in your Quartz repository where Quartz Syncer should store your notes. By default "content".',
@@ -189,23 +189,48 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			.addText((text) =>
 				text
 					.setPlaceholder("content")
-					.setValue(this.settings.settings.contentFolder)
+					.setValue(this.plugin.settings.contentFolder)
 					.onChange(async (value) => {
-						this.settings.settings.contentFolder =
+						this.plugin.settings.contentFolder =
 							normalizePath(value);
-						await this.settings.plugin.saveSettings();
+						await this.plugin.saveSettings();
 					}),
 			);
+
+		this.registerSearchable(
+			contentFolderWrapper,
+			"Content folder",
+			'The folder in your Quartz repository where Quartz Syncer should store your notes. By default "content".',
+		);
+	}
+
+	private renderSearchBar(): void {
+		const searchSetting = new Setting(this.containerEl);
+		searchSetting.settingEl.addClass("quartz-syncer-v5-search-bar");
+
+		this.searchResultsEl = searchSetting.nameEl.createSpan({
+			cls: "quartz-syncer-v5-search-results",
+		});
+
+		searchSetting.addSearch((search) => {
+			search
+				.setPlaceholder("Filter settings...")
+				.setValue(this.searchQuery)
+				.onChange((value) => {
+					this.searchQuery = value;
+					this.applySearchFilter(value);
+				});
+		});
 	}
 
 	private renderLoading(): void {
-		new Setting(this.settingsRootElement)
+		new Setting(this.containerEl)
 			.setName("v5 Configuration")
 			.setDesc("Loading configuration from repository...");
 	}
 
 	private renderNonV5Message(): void {
-		new Setting(this.settingsRootElement)
+		new Setting(this.containerEl)
 			.setName("Quartz v5 not detected")
 			.setDesc(
 				"Your Quartz site uses the v4 configuration format. " +
@@ -214,7 +239,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 	}
 
 	private renderError(message: string): void {
-		new Setting(this.settingsRootElement)
+		new Setting(this.containerEl)
 			.setName("Error")
 			.setDesc(message)
 			.addButton((button) =>
@@ -223,6 +248,195 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					this.display();
 				}),
 			);
+	}
+
+	private renderCollapsibleHeading(
+		name: string,
+		description: string,
+	): HTMLElement {
+		const wrapper = this.containerEl.createDiv({
+			cls: "quartz-syncer-v5-section",
+		});
+		wrapper.dataset.sectionHeading = "true";
+		wrapper.dataset.sectionName = name;
+
+		const isCollapsed =
+			this.collapsedSections.has(name) && !this.searchQuery.trim();
+
+		const setting = new Setting(wrapper)
+			.setName(name)
+			.setDesc(description)
+			.setHeading();
+
+		const chevron = setting.nameEl.createSpan({
+			cls: `quartz-syncer-v5-section-chevron ${
+				isCollapsed ? "" : "quartz-syncer-v5-section-chevron-open"
+			}`,
+		});
+		setIcon(chevron, "chevron-right");
+
+		setting.settingEl.addClass("quartz-syncer-v5-section-heading");
+
+		setting.settingEl.addEventListener("click", (e) => {
+			if (
+				(e.target as HTMLElement).closest(
+					"button, input, select, .checkbox-container",
+				)
+			)
+				return;
+
+			if (this.collapsedSections.has(name)) {
+				this.collapsedSections.delete(name);
+			} else {
+				this.collapsedSections.add(name);
+			}
+			this.display();
+		});
+
+		this.registerSearchable(wrapper, name, description);
+
+		return wrapper;
+	}
+
+	private renderSectionContent(sectionName: string): HTMLElement | null {
+		if (
+			this.collapsedSections.has(sectionName) &&
+			!this.searchQuery.trim()
+		) {
+			return null;
+		}
+
+		return this.containerEl.createDiv({
+			cls: "quartz-syncer-v5-section-content",
+		});
+	}
+
+	private registerSearchable(
+		containerEl: HTMLElement,
+		name: string,
+		description: string,
+	): void {
+		this.searchableSettings.push({
+			containerEl,
+			name: name.toLowerCase(),
+			description: description.toLowerCase(),
+		});
+	}
+
+	private applySearchFilter(query: string): void {
+		const normalizedQuery = query.toLowerCase().trim();
+		let matchCount = 0;
+
+		for (const entry of this.searchableSettings) {
+			if (entry.containerEl.dataset.sectionHeading === "true") {
+				continue;
+			}
+
+			if (
+				!normalizedQuery ||
+				entry.name.includes(normalizedQuery) ||
+				entry.description.includes(normalizedQuery)
+			) {
+				entry.containerEl.removeClass("quartz-syncer-hidden");
+				matchCount++;
+			} else {
+				entry.containerEl.addClass("quartz-syncer-hidden");
+			}
+		}
+
+		if (this.searchResultsEl) {
+			if (normalizedQuery) {
+				this.searchResultsEl.setText(
+					`${matchCount} result${matchCount !== 1 ? "s" : ""}`,
+				);
+			} else {
+				this.searchResultsEl.setText("");
+			}
+		}
+
+		if (normalizedQuery && matchCount === 0) {
+			if (!this.noResultsEl) {
+				this.noResultsEl = this.containerEl.createDiv({
+					cls: "quartz-syncer-v5-no-results",
+					text: "No settings match your search.",
+				});
+			}
+			this.noResultsEl.removeClass("quartz-syncer-hidden");
+		} else if (this.noResultsEl) {
+			this.noResultsEl.addClass("quartz-syncer-hidden");
+		}
+
+		this.updateSectionHeadingVisibility(normalizedQuery);
+	}
+
+	private updateSectionHeadingVisibility(normalizedQuery: string): void {
+		const headings = Array.from(
+			this.containerEl.querySelectorAll<HTMLElement>(
+				"[data-section-heading='true']",
+			),
+		);
+
+		for (const heading of headings) {
+			if (!normalizedQuery) {
+				heading.removeClass("quartz-syncer-hidden");
+
+				const nextSibling =
+					heading.nextElementSibling as HTMLElement | null;
+
+				if (nextSibling?.hasClass("quartz-syncer-v5-section-content")) {
+					nextSibling.removeClass("quartz-syncer-hidden");
+				}
+				continue;
+			}
+
+			let sibling = heading.nextElementSibling as HTMLElement | null;
+			let hasVisibleChild = false;
+
+			while (sibling) {
+				if (sibling.dataset.sectionHeading === "true") {
+					break;
+				}
+
+				if (sibling.hasClass("quartz-syncer-v5-section-content")) {
+					const children = Array.from(
+						sibling.children,
+					) as HTMLElement[];
+
+					hasVisibleChild = children.some(
+						(child) => !child.hasClass("quartz-syncer-hidden"),
+					);
+
+					if (hasVisibleChild) {
+						break;
+					}
+				} else if (!sibling.hasClass("quartz-syncer-hidden")) {
+					hasVisibleChild = true;
+					break;
+				}
+
+				sibling = sibling.nextElementSibling as HTMLElement | null;
+			}
+
+			if (hasVisibleChild) {
+				heading.removeClass("quartz-syncer-hidden");
+
+				const nextSibling =
+					heading.nextElementSibling as HTMLElement | null;
+
+				if (nextSibling?.hasClass("quartz-syncer-v5-section-content")) {
+					nextSibling.removeClass("quartz-syncer-hidden");
+				}
+			} else {
+				heading.addClass("quartz-syncer-hidden");
+
+				const nextSibling =
+					heading.nextElementSibling as HTMLElement | null;
+
+				if (nextSibling?.hasClass("quartz-syncer-v5-section-content")) {
+					nextSibling.addClass("quartz-syncer-hidden");
+				}
+			}
+		}
 	}
 
 	private async loadV5Data(): Promise<void> {
@@ -280,8 +494,8 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			this.display();
 
 			if (
-				this.settings.settings.upgradeCheckStrategy === "commit" &&
-				!this.settings.settings.lastUpstreamCommitSha
+				this.plugin.settings.upgradeCheckStrategy === "commit" &&
+				!this.plugin.settings.lastUpstreamCommitSha
 			) {
 				void this.checkForQuartzUpgrade();
 			}
@@ -311,7 +525,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		if (!this.siteManager) {
 			this.siteManager = new QuartzSyncerSiteManager(
 				this.app.metadataCache,
-				this.settings.settings,
+				this.plugin.settings,
 				this.plugin.getGitSettingsWithSecret(),
 			);
 		}
@@ -329,14 +543,20 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		this.cachedTemplateNames = [];
 		this.cachedTemplates = new Map();
 		this.cachedManifests = new Map();
-		this.expandedPlugins = new Set();
 		this.templateService = null;
 		this.manifestService = null;
 		this.configService = null;
 		this.siteManager = null;
+		this.isDirty = false;
 	}
 
-	private markDirty(): void {}
+	private markDirty(): void {
+		this.isDirty = true;
+
+		if (this.saveButtonEl) {
+			this.saveButtonEl.textContent = "Save*";
+		}
+	}
 
 	private async saveConfig(): Promise<void> {
 		if (!this.cachedConfig || !this.configService || this.isSaving) return;
@@ -346,6 +566,8 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		try {
 			await this.configService.writeConfig(this.cachedConfig);
 			new Notice("Quartz configuration saved and pushed.");
+			this.isDirty = false;
+			this.display();
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
@@ -363,48 +585,93 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		this.renderSiteConfigSection();
 		this.renderPluginListSection();
 		this.renderLayoutSection();
+		this.renderStickyActionBar();
 	}
 
 	private renderVersionSection(): void {
-		new Setting(this.settingsRootElement)
-			.setName("Quartz v5 Configuration")
-			.setDesc(
-				"Edit your Quartz v5 site configuration. Changes are pushed to your repository on save.",
-			)
-			.setHeading();
+		this.renderCollapsibleHeading(
+			"Quartz v5 configuration",
+			"Edit your Quartz v5 site configuration. Changes are pushed to your repository on save.",
+		);
+		const content = this.renderSectionContent("Quartz v5 configuration");
+
+		if (!content) return;
 
 		const versionLabel = this.cachedPackageVersion
 			? `${this.cachedPackageVersion} (${this.cachedVersion})`
 			: (this.cachedVersion ?? "unknown");
 
-		new Setting(this.settingsRootElement)
+		const versionWrapper = content.createDiv();
+
+		new Setting(versionWrapper)
 			.setName("Quartz version")
 			.setDesc(versionLabel);
+		this.registerSearchable(versionWrapper, "Quartz version", versionLabel);
 
 		const configFormat = this.cachedVersion === "v5-yaml" ? "YAML" : "JSON";
 
-		new Setting(this.settingsRootElement)
+		const formatWrapper = content.createDiv();
+
+		new Setting(formatWrapper)
 			.setName("Configuration format")
 			.setDesc(configFormat);
 
-		new Setting(this.settingsRootElement)
-			.addButton((button) =>
-				button.setButtonText("Save").onClick(async () => {
+		this.registerSearchable(
+			formatWrapper,
+			"Configuration format",
+			configFormat,
+		);
+	}
+
+	private renderStickyActionBar(): void {
+		const bar = this.containerEl.createDiv({
+			cls: "quartz-syncer-v5-action-bar",
+		});
+
+		const barSetting = new Setting(bar);
+
+		if (this.isDirty) {
+			barSetting.setDesc("You have unsaved changes.");
+		}
+
+		barSetting.addButton((button) =>
+			button
+				.setButtonText(this.isDirty ? "Save*" : "Save")
+				.setCta()
+				.setDisabled(this.isSaving)
+				.onClick(async () => {
 					await this.saveConfig();
-				}),
-			)
-			.addButton((button) =>
-				button.setButtonText("Refresh").onClick(() => {
-					this.resetCache();
+					this.isDirty = false;
 					this.display();
 				}),
-			);
+		);
+
+		this.saveButtonEl = barSetting.controlEl.querySelector("button");
+
+		barSetting.addButton((button) =>
+			button
+				.setButtonText("Refresh")
+				.setDisabled(this.isLoading)
+				.onClick(() => {
+					this.resetCache();
+					this.isDirty = false;
+					this.display();
+				}),
+		);
 	}
 
 	private renderUpgradeSection(): void {
-		const upgradeSetting = new Setting(this.settingsRootElement)
-			.setName("Quartz Updates")
-			.setHeading();
+		this.renderCollapsibleHeading("Quartz updates", "");
+		const content = this.renderSectionContent("Quartz updates");
+
+		if (!content) return;
+
+		const checkWrapper = content.createDiv();
+
+		const upgradeSetting = new Setting(checkWrapper)
+			.setName("Check for Quartz updates")
+			.setDesc("");
+		this.registerSearchable(checkWrapper, "Check for Quartz updates", "");
 
 		upgradeSetting.addButton((button) =>
 			button
@@ -419,9 +686,11 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 		);
 
-		const strategy = this.settings.settings.upgradeCheckStrategy;
+		const strategy = this.plugin.settings.upgradeCheckStrategy;
 
-		new Setting(this.settingsRootElement)
+		const strategyWrapper = content.createDiv();
+
+		new Setting(strategyWrapper)
 			.setName("Update check strategy")
 			.setDesc(
 				"Version: check for new Quartz releases. " +
@@ -432,21 +701,27 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				dropdown.addOption("commit", "Commit");
 
 				dropdown.setValue(strategy).onChange(async (value) => {
-					this.settings.settings.upgradeCheckStrategy = value as
+					this.plugin.settings.upgradeCheckStrategy = value as
 						| "version"
 						| "commit";
-					await this.settings.plugin.saveSettings();
+					await this.plugin.saveSettings();
 					this.cachedUpgradeStatus = null;
 					this.display();
 
 					if (
 						value === "commit" &&
-						!this.settings.settings.lastUpstreamCommitSha
+						!this.plugin.settings.lastUpstreamCommitSha
 					) {
 						void this.checkForQuartzUpgrade();
 					}
 				});
 			});
+
+		this.registerSearchable(
+			strategyWrapper,
+			"Update check strategy",
+			"Version: check for new Quartz releases. Commit: check for any new upstream commits (including unreleased changes).",
+		);
 
 		if (this.cachedUpgradeStatus) {
 			const status = this.cachedUpgradeStatus;
@@ -457,9 +732,17 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					: status.hasUpgrade;
 
 			if (status.error) {
-				new Setting(this.settingsRootElement)
+				const errorWrapper = content.createDiv();
+
+				new Setting(errorWrapper)
 					.setName("Upgrade check failed")
 					.setDesc(status.error);
+
+				this.registerSearchable(
+					errorWrapper,
+					"Upgrade check failed",
+					status.error,
+				);
 			} else if (upgradeAvailable) {
 				const desc =
 					strategy === "commit"
@@ -473,7 +756,9 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 								status.upstreamVersion ?? "unknown"
 							}.`;
 
-				const upgradeSetting = new Setting(this.settingsRootElement)
+				const availableWrapper = content.createDiv();
+
+				const upgradeSetting = new Setting(availableWrapper)
 					.setName(
 						strategy === "commit"
 							? "New upstream commits available"
@@ -481,34 +766,66 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					)
 					.setDesc(desc);
 
+				this.registerSearchable(
+					availableWrapper,
+					strategy === "commit"
+						? "New upstream commits available"
+						: "Quartz upgrade available",
+					desc,
+				);
+
 				upgradeSetting.addButton((button) =>
 					button
 						.setButtonText(
 							this.isUpgrading ? "Upgrading..." : "Upgrade now",
 						)
-						.setWarning()
+						.setDestructive()
 						.setDisabled(this.isUpgrading)
 						.onClick(async () => {
+							const confirmed = await new ConfirmModal(
+								this.app,
+								"Upgrade Quartz",
+								"This will merge upstream changes into your repository.",
+								"Upgrade",
+							).await();
+
+							if (!confirmed) return;
 							await this.performQuartzUpgrade();
 						}),
 				);
 			} else if (strategy === "commit" && status.latestUpstreamSha) {
-				new Setting(this.settingsRootElement)
+				const statusWrapper = content.createDiv();
+
+				const desc = `Current upstream commit: ${status.latestUpstreamSha.slice(
+					0,
+					7,
+				)}`;
+
+				new Setting(statusWrapper)
 					.setName("Quartz is up to date")
-					.setDesc(
-						`Current upstream commit: ${status.latestUpstreamSha.slice(
-							0,
-							7,
-						)}`,
-					);
+					.setDesc(desc);
+
+				this.registerSearchable(
+					statusWrapper,
+					"Quartz is up to date",
+					desc,
+				);
 			} else {
-				new Setting(this.settingsRootElement)
+				const statusWrapper = content.createDiv();
+
+				const desc = `Current version: ${
+					status.currentVersion ?? "unknown"
+				}`;
+
+				new Setting(statusWrapper)
 					.setName("Quartz is up to date")
-					.setDesc(
-						`Current version: ${
-							status.currentVersion ?? "unknown"
-						}`,
-					);
+					.setDesc(desc);
+
+				this.registerSearchable(
+					statusWrapper,
+					"Quartz is up to date",
+					desc,
+				);
 			}
 		}
 	}
@@ -532,13 +849,13 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				this.cachedUpgradeStatus.latestUpstreamSha &&
 				!this.cachedUpgradeStatus.hasNewerCommits
 			) {
-				this.settings.settings.lastUpstreamCommitSha =
+				this.plugin.settings.lastUpstreamCommitSha =
 					this.cachedUpgradeStatus.latestUpstreamSha;
-				await this.settings.plugin.saveSettings();
+				await this.plugin.saveSettings();
 			}
 
 			const useCommitStrategy =
-				this.settings.settings.upgradeCheckStrategy === "commit";
+				this.plugin.settings.upgradeCheckStrategy === "commit";
 
 			const hasUpdate = useCommitStrategy
 				? this.cachedUpgradeStatus.hasNewerCommits
@@ -614,24 +931,25 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 	private renderTemplateSection(): void {
 		if (this.cachedTemplateNames.length === 0) return;
 
-		new Setting(this.settingsRootElement)
-			.setName("Templates")
-			.setDesc(
-				"Apply a configuration template to replace your current settings with a preset.",
-			)
-			.setHeading();
+		this.renderCollapsibleHeading(
+			"Templates",
+			"Apply a configuration template to replace your current settings with a preset.",
+		);
+		const content = this.renderSectionContent("Templates");
+
+		if (!content) return;
 
 		for (const templateName of this.cachedTemplateNames) {
-			const setting = new Setting(this.settingsRootElement).setName(
-				templateName,
-			);
+			const templateWrapper = content.createDiv();
+			const setting = new Setting(templateWrapper).setName(templateName);
 
 			const cached = this.cachedTemplates.get(templateName);
 
+			let desc = "";
+
 			if (cached) {
-				setting.setDesc(
-					`Title: "${cached.config.configuration.pageTitle}" · ${cached.config.plugins.length} plugin(s)`,
-				);
+				desc = `Title: "${cached.config.configuration.pageTitle}" · ${cached.config.plugins.length} plugin(s)`;
+				setting.setDesc(desc);
 			}
 
 			setting.addButton((button) =>
@@ -664,9 +982,18 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			setting.addButton((button) =>
 				button
 					.setButtonText("Apply")
-					.setWarning()
+					.setDestructive()
 					.onClick(async () => {
 						if (!this.cachedConfig || !this.templateService) return;
+
+						const confirmed = await new ConfirmModal(
+							this.app,
+							"Apply template",
+							`Apply template "${templateName}"? This will replace your current site configuration.`,
+							"Apply",
+						).await();
+
+						if (!confirmed) return;
 
 						const template =
 							this.cachedTemplates.get(templateName) ??
@@ -696,6 +1023,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 						);
 					}),
 			);
+			this.registerSearchable(templateWrapper, templateName, desc);
 		}
 	}
 
@@ -704,14 +1032,23 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 
 		const config = this.cachedConfig.configuration;
 
-		new Setting(this.settingsRootElement)
-			.setName("Site Configuration")
-			.setDesc(
-				"Edit site settings. Changes are applied when you click Save above.",
-			)
-			.setHeading();
+		this.renderCollapsibleHeading(
+			"Site configuration",
+			"Edit site settings. Changes are applied when you click Save above.",
+		);
+		const content = this.renderSectionContent("Site configuration");
 
-		new Setting(this.settingsRootElement)
+		if (!content) {
+			if (config.theme) {
+				this.renderThemeSection(config);
+			}
+
+			return;
+		}
+
+		const pageTitleWrapper = content.createDiv();
+
+		new Setting(pageTitleWrapper)
 			.setName("Page title")
 			.setDesc("The title shown in the browser tab and site header.")
 			.addText((text) =>
@@ -721,7 +1058,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			pageTitleWrapper,
+			"Page title",
+			"The title shown in the browser tab and site header.",
+		);
+
+		const pageTitleSuffixWrapper = content.createDiv();
+
+		new Setting(pageTitleSuffixWrapper)
 			.setName("Page title suffix")
 			.setDesc(
 				'Appended to the page title on subpages (e.g. " | My Site").',
@@ -735,7 +1080,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			pageTitleSuffixWrapper,
+			"Page title suffix",
+			'Appended to the page title on subpages (e.g. " | My Site").',
+		);
+
+		const spaWrapper = content.createDiv();
+
+		new Setting(spaWrapper)
 			.setName("SPA mode")
 			.setDesc(
 				"Single Page Application mode for faster navigation between pages.",
@@ -747,7 +1100,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			spaWrapper,
+			"SPA mode",
+			"Single Page Application mode for faster navigation between pages.",
+		);
+
+		const popoversWrapper = content.createDiv();
+
+		new Setting(popoversWrapper)
 			.setName("Popovers")
 			.setDesc("Show page preview popovers on hover.")
 			.addToggle((toggle) =>
@@ -759,7 +1120,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			popoversWrapper,
+			"Popovers",
+			"Show page preview popovers on hover.",
+		);
+
+		const localeWrapper = content.createDiv();
+
+		new Setting(localeWrapper)
 			.setName("Locale")
 			.setDesc(
 				"BCP 47 locale tag for date formatting and i18n (e.g. en-US).",
@@ -771,7 +1140,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 			);
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			localeWrapper,
+			"Locale",
+			"BCP 47 locale tag for date formatting and i18n (e.g. en-US).",
+		);
+
+		const baseUrlWrapper = content.createDiv();
+
+		new Setting(baseUrlWrapper)
 			.setName("Base URL")
 			.setDesc(
 				"The base URL where your site is hosted (without protocol, e.g. example.com/quartz).",
@@ -786,13 +1163,29 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					}),
 			);
 
+		this.registerSearchable(
+			baseUrlWrapper,
+			"Base URL",
+			"The base URL where your site is hosted (without protocol, e.g. example.com/quartz).",
+		);
+
 		if (config.analytics) {
-			new Setting(this.settingsRootElement)
+			const analyticsWrapper = content.createDiv();
+
+			new Setting(analyticsWrapper)
 				.setName("Analytics provider")
 				.setDesc(config.analytics.provider);
+
+			this.registerSearchable(
+				analyticsWrapper,
+				"Analytics provider",
+				config.analytics.provider,
+			);
 		}
 
-		new Setting(this.settingsRootElement)
+		const ignoreWrapper = content.createDiv();
+
+		new Setting(ignoreWrapper)
 			.setName("Ignore patterns")
 			.setDesc(
 				"Comma-separated glob patterns for files to exclude from processing.",
@@ -810,6 +1203,12 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					}),
 			);
 
+		this.registerSearchable(
+			ignoreWrapper,
+			"Ignore patterns",
+			"Comma-separated glob patterns for files to exclude from processing.",
+		);
+
 		if (config.theme) {
 			this.renderThemeSection(config);
 		}
@@ -818,39 +1217,44 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 	private renderThemeSection(config: QuartzV5Config["configuration"]): void {
 		const theme = config.theme;
 
-		new Setting(this.settingsRootElement)
-			.setName("Theme")
-			.setDesc("Typography and font settings.")
-			.setHeading();
+		this.renderCollapsibleHeading("Theme", "Typography and font settings.");
+		const content = this.renderSectionContent("Theme");
 
-		new Setting(this.settingsRootElement)
-			.setName("Header font")
-			.addText((text) =>
-				text.setValue(theme.typography.header).onChange((value) => {
-					theme.typography.header = value;
-					this.markDirty();
-				}),
-			);
+		if (!content) return;
 
-		new Setting(this.settingsRootElement)
-			.setName("Body font")
-			.addText((text) =>
-				text.setValue(theme.typography.body).onChange((value) => {
-					theme.typography.body = value;
-					this.markDirty();
-				}),
-			);
+		const headerFontWrapper = content.createDiv();
 
-		new Setting(this.settingsRootElement)
-			.setName("Code font")
-			.addText((text) =>
-				text.setValue(theme.typography.code).onChange((value) => {
-					theme.typography.code = value;
-					this.markDirty();
-				}),
-			);
+		new Setting(headerFontWrapper).setName("Header font").addText((text) =>
+			text.setValue(theme.typography.header).onChange((value) => {
+				theme.typography.header = value;
+				this.markDirty();
+			}),
+		);
+		this.registerSearchable(headerFontWrapper, "Header font", "");
 
-		new Setting(this.settingsRootElement)
+		const bodyFontWrapper = content.createDiv();
+
+		new Setting(bodyFontWrapper).setName("Body font").addText((text) =>
+			text.setValue(theme.typography.body).onChange((value) => {
+				theme.typography.body = value;
+				this.markDirty();
+			}),
+		);
+		this.registerSearchable(bodyFontWrapper, "Body font", "");
+
+		const codeFontWrapper = content.createDiv();
+
+		new Setting(codeFontWrapper).setName("Code font").addText((text) =>
+			text.setValue(theme.typography.code).onChange((value) => {
+				theme.typography.code = value;
+				this.markDirty();
+			}),
+		);
+		this.registerSearchable(codeFontWrapper, "Code font", "");
+
+		const cdnWrapper = content.createDiv();
+
+		new Setting(cdnWrapper)
 			.setName("CDN caching")
 			.setDesc("Cache fonts via CDN for faster loading.")
 			.addToggle((toggle) =>
@@ -860,9 +1264,17 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 			);
 
+		this.registerSearchable(
+			cdnWrapper,
+			"CDN caching",
+			"Cache fonts via CDN for faster loading.",
+		);
+
 		const quartzThemesPlugin = this.findQuartzThemesPlugin();
 
-		new Setting(this.settingsRootElement)
+		const themesToggleWrapper = content.createDiv();
+
+		new Setting(themesToggleWrapper)
 			.setName("Use Quartz Themes")
 			.setDesc(
 				"Use community color themes from Quartz Themes instead of manual color editing.",
@@ -881,7 +1293,6 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 										name: "quartz-themes",
 										repo: "github:saberzero1/quartz-themes",
 										subdir: "plugin",
-										ref: "main",
 									},
 								);
 
@@ -915,19 +1326,27 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					}),
 			);
 
+		this.registerSearchable(
+			themesToggleWrapper,
+			"Use Quartz Themes",
+			"Use community color themes from Quartz Themes instead of manual color editing.",
+		);
+
 		if (quartzThemesPlugin) {
-			this.renderQuartzThemesConfig(quartzThemesPlugin);
+			this.renderQuartzThemesConfig(quartzThemesPlugin, content);
 		} else {
 			this.renderColorSchemeSection(
 				"Light mode colors",
 				theme.colors.lightMode,
 				DEFAULT_LIGHT_COLORS,
+				content,
 			);
 
 			this.renderColorSchemeSection(
 				"Dark mode colors",
 				theme.colors.darkMode,
 				DEFAULT_DARK_COLORS,
+				content,
 			);
 		}
 	}
@@ -936,8 +1355,12 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		heading: string,
 		scheme: QuartzColorScheme,
 		defaults: QuartzColorScheme,
+		containerEl: HTMLElement,
 	): void {
-		new Setting(this.settingsRootElement).setName(heading).setHeading();
+		const headingWrapper = containerEl.createDiv();
+		headingWrapper.dataset.sectionHeading = "true";
+		new Setting(headingWrapper).setName(heading).setHeading();
+		this.registerSearchable(headingWrapper, heading, "");
 
 		const colorFields: { key: keyof QuartzColorScheme; label: string }[] = [
 			{ key: "light", label: "Background" },
@@ -952,9 +1375,8 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		];
 
 		for (const { key, label } of colorFields) {
-			const setting = new Setting(this.settingsRootElement).setName(
-				label,
-			);
+			const fieldWrapper = containerEl.createDiv();
+			const setting = new Setting(fieldWrapper).setName(label);
 			const currentValue = scheme[key];
 			const defaultValue = defaults[key];
 			const isHexColor = /^#[0-9a-fA-F]{3,8}$/.test(currentValue);
@@ -988,6 +1410,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 					this.markDirty();
 				}),
 			);
+			this.registerSearchable(fieldWrapper, label, "");
 		}
 	}
 
@@ -1001,7 +1424,10 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		);
 	}
 
-	private renderQuartzThemesConfig(plugin: QuartzPluginEntry): void {
+	private renderQuartzThemesConfig(
+		plugin: QuartzPluginEntry,
+		containerEl: HTMLElement,
+	): void {
 		if (!plugin.options) {
 			plugin.options = {};
 		}
@@ -1015,9 +1441,17 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		const themes = this.cachedThemesJson;
 
 		if (!themes) {
-			new Setting(this.settingsRootElement)
+			const loadingWrapper = containerEl.createDiv();
+
+			new Setting(loadingWrapper)
 				.setName("Theme")
 				.setDesc("Loading available themes...");
+
+			this.registerSearchable(
+				loadingWrapper,
+				"Theme",
+				"Loading available themes...",
+			);
 			void this.fetchThemesJson().then(() => this.display());
 
 			return;
@@ -1025,7 +1459,9 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 
 		const themeNames = Object.keys(themes).sort();
 
-		new Setting(this.settingsRootElement)
+		const themeWrapper = containerEl.createDiv();
+
+		new Setting(themeWrapper)
 			.setName("Theme")
 			.setDesc("Select a community color theme.")
 			.addDropdown((dropdown) => {
@@ -1056,13 +1492,21 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				});
 			});
 
+		this.registerSearchable(
+			themeWrapper,
+			"Theme",
+			"Select a community color theme.",
+		);
+
 		const selectedTheme = currentThemeName
 			? themes[currentThemeName]
 			: null;
 		const variations = selectedTheme?.variations ?? [];
 
 		if (variations.length > 0) {
-			new Setting(this.settingsRootElement)
+			const variationWrapper = containerEl.createDiv();
+
+			new Setting(variationWrapper)
 				.setName("Variation")
 				.setDesc("Select a theme variation.")
 				.addDropdown((dropdown) => {
@@ -1086,6 +1530,12 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 							this.markDirty();
 						});
 				});
+
+			this.registerSearchable(
+				variationWrapper,
+				"Variation",
+				"Select a theme variation.",
+			);
 		}
 	}
 
@@ -1314,14 +1764,27 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		const plugins = this.cachedConfig.plugins;
 		const lockPlugins = this.cachedLockFile?.plugins ?? {};
 
-		const pluginHeading = new Setting(this.settingsRootElement)
-			.setName("Plugins")
-			.setDesc(
-				`${plugins.length} plugin(s) configured. Toggle enabled state or adjust execution order.`,
-			)
-			.setHeading();
+		this.renderCollapsibleHeading(
+			"Plugins",
+			`${plugins.length} plugin(s) configured. Toggle enabled state or adjust execution order.`,
+		);
+		const content = this.renderSectionContent("Plugins");
 
-		pluginHeading.addButton((button) =>
+		if (!content) return;
+
+		const pluginActionsWrapper = content.createDiv();
+
+		const pluginActionsSetting = new Setting(pluginActionsWrapper)
+			.setName("Plugin actions")
+			.setDesc("");
+
+		this.registerSearchable(
+			pluginActionsWrapper,
+			"Plugin actions",
+			"Check for updates, update all, browse plugins.",
+		);
+
+		pluginActionsSetting.addButton((button) =>
 			button
 				.setButtonText(
 					this.isCheckingUpdates
@@ -1340,7 +1803,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			: 0;
 
 		if (updatableCount > 0) {
-			pluginHeading.addButton((button) =>
+			pluginActionsSetting.addButton((button) =>
 				button
 					.setButtonText(`Update all (${updatableCount})`)
 					.onClick(async () => {
@@ -1349,7 +1812,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			);
 		}
 
-		pluginHeading.addButton((button) =>
+		pluginActionsSetting.addButton((button) =>
 			button.setButtonText("Browse plugins").onClick(() => {
 				if (!this.cachedConfig) return;
 
@@ -1366,7 +1829,9 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 
 		let addPluginSource = "";
 
-		new Setting(this.settingsRootElement)
+		const addPluginWrapper = content.createDiv();
+
+		new Setting(addPluginWrapper)
 			.setName("Add plugin")
 			.setDesc(
 				'Enter a plugin source (e.g. "github:quartz-community/explorer").',
@@ -1401,16 +1866,36 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				}),
 			);
 
+		this.registerSearchable(
+			addPluginWrapper,
+			"Add plugin",
+			'Enter a plugin source (e.g. "github:quartz-community/explorer").',
+		);
+
 		if (plugins.length === 0) {
-			new Setting(this.settingsRootElement)
+			const emptyWrapper = content.createDiv();
+
+			new Setting(emptyWrapper)
 				.setName("No plugins")
 				.setDesc("No plugins are configured in your Quartz config.");
+
+			this.registerSearchable(
+				emptyWrapper,
+				"No plugins",
+				"No plugins are configured in your Quartz config.",
+			);
 
 			return;
 		}
 
 		for (let i = 0; i < plugins.length; i++) {
-			this.renderPluginEntry(plugins[i], i, plugins.length, lockPlugins);
+			this.renderPluginEntry(
+				plugins[i],
+				i,
+				plugins.length,
+				lockPlugins,
+				content,
+			);
 		}
 	}
 
@@ -1419,6 +1904,7 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		index: number,
 		total: number,
 		lockPlugins: Record<string, QuartzLockFileEntry>,
+		containerEl: HTMLElement,
 	): void {
 		const name = getPluginName(plugin.source);
 		const infoParts: string[] = [];
@@ -1456,10 +1942,13 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		}
 
 		const displayName = updateStatus?.hasUpdate ? `${name} *` : name;
+		const desc = infoParts.length > 0 ? infoParts.join(" · ") : "";
+		const entryWrapper = containerEl.createDiv();
 
-		const setting = new Setting(this.settingsRootElement)
+		const setting = new Setting(entryWrapper)
 			.setName(displayName)
-			.setDesc(infoParts.length > 0 ? infoParts.join(" · ") : "");
+			.setDesc(desc);
+		this.registerSearchable(entryWrapper, displayName, desc);
 
 		setting.addToggle((toggle) =>
 			toggle
@@ -1473,276 +1962,52 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 
 		setting.addExtraButton((button) =>
 			button
-				.setIcon("arrow-up")
-				.setTooltip("Move up")
-				.setDisabled(index === 0)
-				.onClick(() => this.movePlugin(index, index - 1)),
-		);
-
-		setting.addExtraButton((button) =>
-			button
-				.setIcon("arrow-down")
-				.setTooltip("Move down")
-				.setDisabled(index === total - 1)
-				.onClick(() => this.movePlugin(index, index + 1)),
-		);
-
-		setting.addExtraButton((button) =>
-			button
-				.setIcon("trash")
-				.setTooltip("Remove plugin")
+				.setIcon("settings")
+				.setTooltip("Plugin settings")
 				.onClick(() => {
 					if (!this.cachedConfig) return;
 
-					const key = getPluginSourceKey(plugin.source);
+					const modal = new PluginOptionsModal(this.app, {
+						plugin,
+						index,
+						total,
+						config: this.cachedConfig,
+						manifest: this.cachedManifests.get(name) ?? null,
+						manifestService: this.manifestService,
+						updateStatus,
+						onDirty: () => this.markDirty(),
+						onMovePlugin: (from, to) => {
+							this.movePlugin(from, to);
+						},
+						onRemovePlugin: (key) => {
+							if (!this.cachedConfig) return;
 
-					try {
-						this.pluginManager.removePlugin(this.cachedConfig, key);
-						this.markDirty();
-						this.display();
-
-						new Notice(
-							`Plugin "${getPluginName(
-								plugin.source,
-							)}" removed. Save to push changes.`,
-						);
-					} catch (error) {
-						const message =
-							error instanceof Error
-								? error.message
-								: String(error);
-						new Notice(message);
-					}
-				}),
-		);
-
-		if (plugin.layout) {
-			this.renderPluginLayoutControls(plugin);
-		}
-
-		if (updateStatus?.hasUpdate && updateStatus.remoteCommit) {
-			setting.addExtraButton((button) =>
-				button
-					.setIcon("download")
-					.setTooltip(
-						`Update to ${updateStatus.remoteCommit?.slice(0, 7)}`,
-					)
-					.onClick(async () => {
-						await this.updatePlugin(
-							name,
-							updateStatus.remoteCommit!,
-						);
-					}),
-			);
-		}
-
-		const isExpanded = this.expandedPlugins.has(name);
-
-		setting.addExtraButton((button) =>
-			button
-				.setIcon(isExpanded ? "chevron-up" : "settings")
-				.setTooltip(isExpanded ? "Hide options" : "Show options")
-				.onClick(async () => {
-					if (isExpanded) {
-						this.expandedPlugins.delete(name);
-					} else {
-						this.expandedPlugins.add(name);
-
-						if (
-							!this.cachedManifests.has(name) &&
-							this.manifestService
-						) {
-							const manifest =
-								await this.manifestService.fetchManifest(
-									plugin.source,
+							try {
+								this.pluginManager.removePlugin(
+									this.cachedConfig,
+									key,
 								);
-							this.cachedManifests.set(name, manifest);
-						}
-					}
+								this.markDirty();
+								this.display();
 
-					this.display();
+								new Notice(
+									`Plugin "${name}" removed. Save to push changes.`,
+								);
+							} catch (error) {
+								const message =
+									error instanceof Error
+										? error.message
+										: String(error);
+								new Notice(message);
+							}
+						},
+						onUpdatePlugin: async (pluginName, commit) => {
+							await this.updatePlugin(pluginName, commit);
+						},
+					});
+					modal.open();
 				}),
 		);
-
-		if (isExpanded) {
-			this.renderPluginOptions(plugin, name);
-		}
-	}
-
-	private renderPluginOptions(
-		plugin: QuartzPluginEntry,
-		sourceKey: string,
-	): void {
-		if (!plugin.options) {
-			plugin.options = {};
-		}
-
-		const formatOptionValue = (value: unknown): string => {
-			if (value !== null && typeof value === "object") {
-				return JSON.stringify(value);
-			}
-
-			return String(value);
-		};
-
-		const manifest = this.cachedManifests.get(sourceKey);
-		const schema = manifest?.optionSchema ?? manifest?.configSchema ?? null;
-
-		const optionKeys = new Set<string>([
-			...Object.keys(plugin.options),
-			...(schema ? Object.keys(schema) : []),
-		]);
-
-		if (optionKeys.size === 0) {
-			new Setting(this.settingsRootElement).setDesc(
-				manifest
-					? "This plugin has no configurable options."
-					: "Loading manifest failed. You can still edit options manually.",
-			);
-		}
-
-		for (const optKey of optionKeys) {
-			const currentValue = plugin.options[optKey];
-
-			const schemaEntry = schema?.[optKey] as
-				| Record<string, unknown>
-				| undefined;
-			const label = (schemaEntry?.title as string) ?? optKey;
-			const desc = (schemaEntry?.description as string) ?? "";
-
-			const setting = new Setting(this.settingsRootElement)
-				.setName(label)
-				.setDesc(desc);
-
-			if (typeof currentValue === "boolean") {
-				setting.addToggle((toggle) =>
-					toggle.setValue(currentValue).onChange((value) => {
-						plugin.options![optKey] = value;
-						this.markDirty();
-					}),
-				);
-			} else if (
-				typeof currentValue === "number" ||
-				schemaEntry?.type === "number" ||
-				schemaEntry?.type === "integer"
-			) {
-				setting.addText((text) =>
-					text
-						.setValue(
-							currentValue !== undefined
-								? formatOptionValue(currentValue)
-								: "",
-						)
-						.setPlaceholder(
-							schemaEntry?.default !== undefined
-								? formatOptionValue(schemaEntry.default)
-								: "",
-						)
-						.onChange((value) => {
-							const num = parseFloat(value);
-
-							plugin.options![optKey] = isNaN(num)
-								? undefined
-								: num;
-							this.markDirty();
-						}),
-				);
-			} else {
-				setting.addText((text) =>
-					text
-						.setValue(
-							currentValue !== undefined
-								? formatOptionValue(currentValue)
-								: "",
-						)
-						.setPlaceholder(
-							schemaEntry?.default !== undefined
-								? formatOptionValue(schemaEntry.default)
-								: "",
-						)
-						.onChange((value) => {
-							plugin.options![optKey] = value || undefined;
-							this.markDirty();
-						}),
-				);
-			}
-		}
-
-		let newOptionKey = "";
-
-		new Setting(this.settingsRootElement)
-			.setDesc("Add a custom option key.")
-			.addText((text) =>
-				text.setPlaceholder("optionKey").onChange((value) => {
-					newOptionKey = value;
-				}),
-			)
-			.addButton((button) =>
-				button.setButtonText("Add option").onClick(() => {
-					if (!newOptionKey.trim() || !plugin.options) return;
-
-					if (plugin.options[newOptionKey.trim()] !== undefined) {
-						new Notice(
-							`Option "${newOptionKey.trim()}" already exists.`,
-						);
-
-						return;
-					}
-
-					plugin.options[newOptionKey.trim()] = "";
-					this.markDirty();
-					this.display();
-				}),
-			);
-	}
-
-	private renderPluginLayoutControls(plugin: QuartzPluginEntry): void {
-		if (!plugin.layout) return;
-
-		const layout = plugin.layout;
-
-		const layoutSetting = new Setting(this.settingsRootElement).setDesc(
-			"Layout: position, priority, and display mode for this plugin's component.",
-		);
-
-		layoutSetting.addDropdown((dropdown) => {
-			dropdown.addOption("", "No position");
-
-			for (const pos of LAYOUT_POSITIONS) {
-				dropdown.addOption(pos, pos);
-			}
-
-			dropdown.setValue(layout.position ?? "").onChange((value) => {
-				layout.position = (value as QuartzLayoutPosition) || undefined;
-				this.markDirty();
-			});
-		});
-
-		layoutSetting.addText((text) =>
-			text
-				.setPlaceholder("Priority")
-				.setValue(
-					layout.priority !== undefined
-						? String(layout.priority)
-						: "",
-				)
-				.onChange((value) => {
-					const num = parseInt(value, 10);
-					layout.priority = isNaN(num) ? undefined : num;
-					this.markDirty();
-				}),
-		);
-
-		layoutSetting.addDropdown((dropdown) => {
-			for (const mode of DISPLAY_MODES) {
-				dropdown.addOption(mode, mode);
-			}
-
-			dropdown.setValue(layout.display ?? "all").onChange((value) => {
-				layout.display = value as QuartzDisplayMode;
-				this.markDirty();
-			});
-		});
 	}
 
 	private renderLayoutSection(): void {
@@ -1756,21 +2021,23 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 
 		const layout = config.layout;
 
-		new Setting(this.settingsRootElement)
-			.setName("Layout Overrides")
-			.setDesc(
-				"Per-page-type layout overrides. Set a frame template or exclude plugins for specific page types.",
-			)
-			.setHeading();
+		this.renderCollapsibleHeading(
+			"Layout overrides",
+			"Per-page-type layout overrides. Set a frame template or exclude plugins for specific page types.",
+		);
+		const content = this.renderSectionContent("Layout overrides");
+
+		if (!content) return;
 
 		for (const pageType of PAGE_TYPES) {
-			this.renderPageTypeOverride(layout, pageType);
+			this.renderPageTypeOverride(layout, pageType, content);
 		}
 	}
 
 	private renderPageTypeOverride(
 		layout: QuartzGlobalLayout,
 		pageType: QuartzPageType,
+		containerEl: HTMLElement,
 	): void {
 		if (!layout.byPageType) {
 			layout.byPageType = {};
@@ -1779,10 +2046,17 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 		const override = layout.byPageType[pageType];
 		const hasOverride = override !== undefined;
 
-		const setting = new Setting(this.settingsRootElement).setName(pageType);
+		const overrideWrapper = containerEl.createDiv();
+		const setting = new Setting(overrideWrapper).setName(pageType);
 
 		if (!hasOverride) {
 			setting.setDesc("No overrides configured.");
+
+			this.registerSearchable(
+				overrideWrapper,
+				pageType,
+				"No overrides configured.",
+			);
 
 			setting.addButton((button) =>
 				button.setButtonText("Add override").onClick(() => {
@@ -1799,6 +2073,8 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			return;
 		}
 
+		this.registerSearchable(overrideWrapper, pageType, "");
+
 		setting.addButton((button) =>
 			button.setButtonText("Remove override").onClick(() => {
 				if (layout.byPageType) {
@@ -1810,7 +2086,9 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 			}),
 		);
 
-		new Setting(this.settingsRootElement)
+		const templateWrapper = containerEl.createDiv();
+
+		new Setting(templateWrapper)
 			.setName("Template")
 			.setDesc(`Frame template for ${pageType} pages.`)
 			.addDropdown((dropdown) => {
@@ -1838,7 +2116,15 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(this.settingsRootElement)
+		this.registerSearchable(
+			templateWrapper,
+			"Template",
+			`Frame template for ${pageType} pages.`,
+		);
+
+		const excludeWrapper = containerEl.createDiv();
+
+		new Setting(excludeWrapper)
 			.setName("Excluded plugins")
 			.setDesc(
 				`Comma-separated plugin names to exclude from ${pageType} pages.`,
@@ -1860,6 +2146,12 @@ export class QuartzV5SettingsTab extends PluginSettingTab {
 						this.markDirty();
 					}),
 			);
+
+		this.registerSearchable(
+			excludeWrapper,
+			"Excluded plugins",
+			`Comma-separated plugin names to exclude from ${pageType} pages.`,
+		);
 	}
 
 	private movePlugin(fromIndex: number, toIndex: number): void {
