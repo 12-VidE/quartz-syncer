@@ -3,10 +3,17 @@
 	import { Platform } from "obsidian";
 	import type { DiffViewStyle } from "src/models/settings";
 
-	export let oldContent: string;
-	export let newContent: string;
-	export let fileName: string = "";
-	export let defaultViewStyle: DiffViewStyle = "auto";
+	let {
+		oldContent,
+		newContent,
+		fileName = "",
+		defaultViewStyle = "auto" as DiffViewStyle,
+	}: {
+		oldContent: string;
+		newContent: string;
+		fileName?: string;
+		defaultViewStyle?: DiffViewStyle;
+	} = $props();
 
 	type ViewMode = "split" | "unified";
 
@@ -16,9 +23,9 @@
 		return Platform.isMobile ? "unified" : "split";
 	}
 
-	let viewMode: ViewMode = getInitialViewMode();
+	let viewMode: ViewMode = $state(getInitialViewMode());
 
-	$: diff = diffLines(oldContent, newContent);
+	let diff = $derived(diffLines(oldContent, newContent));
 
 	interface SplitLine {
 		left: { content: string; type: "removed" | "unchanged" } | null;
@@ -74,7 +81,7 @@
 		return result;
 	}
 
-	$: splitLines = buildSplitLines(diff);
+	let splitLines = $derived(buildSplitLines(diff));
 
 	function getUnifiedLines(changes: Change[]): Array<{
 		content: string;
@@ -122,14 +129,14 @@
 		return result;
 	}
 
-	$: unifiedLines = getUnifiedLines(diff);
+	let unifiedLines = $derived(getUnifiedLines(diff));
 
-	$: additions = diff
-		.filter((c) => c.added)
-		.reduce((sum, c) => sum + c.count!, 0);
-	$: deletions = diff
-		.filter((c) => c.removed)
-		.reduce((sum, c) => sum + c.count!, 0);
+	let additions = $derived(
+		diff.filter((c) => c.added).reduce((sum, c) => sum + c.count!, 0),
+	);
+	let deletions = $derived(
+		diff.filter((c) => c.removed).reduce((sum, c) => sum + c.count!, 0),
+	);
 
 	let leftPane: HTMLDivElement | null = null;
 	let rightPane: HTMLDivElement | null = null;
@@ -193,14 +200,14 @@
 			<button
 				class="view-toggle"
 				class:active={viewMode === "split"}
-				on:click={() => (viewMode = "split")}
+				onclick={() => (viewMode = "split")}
 			>
 				Split
 			</button>
 			<button
 				class="view-toggle"
 				class:active={viewMode === "unified"}
-				on:click={() => (viewMode = "unified")}
+				onclick={() => (viewMode = "unified")}
 			>
 				Unified
 			</button>

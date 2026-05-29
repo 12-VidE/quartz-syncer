@@ -8,14 +8,23 @@
 <!-- TreeView with checkbox https://svelte.dev/playground/eca6f6392e294247b4f379fde3069274?version=5.34.3 -->
 
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
-
-	import TreeNode from "src/models/TreeNode";
+	import TreeNodeModel from "src/models/TreeNode";
 	import Icon from "src/ui/Icon.svelte";
-	export let tree: TreeNode;
-	export let readOnly: boolean = false;
-	export let enableShowDiff: boolean = false;
-	const dispatch = createEventDispatcher();
+	import TreeNode from "src/ui/TreeView/TreeNode.svelte";
+
+	let {
+		tree,
+		readOnly = false,
+		enableShowDiff = false,
+		ontoggle,
+		onshowdiff,
+	}: {
+		tree: TreeNodeModel;
+		readOnly?: boolean;
+		enableShowDiff?: boolean;
+		ontoggle?: (_data: { node: TreeNodeModel }) => void;
+		onshowdiff?: (_data: { node: TreeNodeModel }) => void;
+	} = $props();
 
 	let { isRoot } = tree;
 
@@ -30,7 +39,7 @@
 		expanded = _expansionState[tree.path] = !expanded;
 	};
 
-	$: arrowDown = expanded;
+	let arrowDown = $derived(expanded);
 
 	/**
 	 * Toggle the check state of the current node.
@@ -40,7 +49,7 @@
 	const toggleCheck = () => {
 		tree.checked = !tree.checked;
 
-		dispatch("toggle", {
+		ontoggle?.({
 			node: tree,
 		});
 	};
@@ -49,10 +58,10 @@
 	 * Dispatch a 'toggle' event when the checkbox is clicked.
 	 * This is used to update the tree's state in the parent component.
 	 *
-	 * @param e - The event object containing the node that was toggled.
+	 * @param node - The TreeNode that was toggled.
 	 */
-	const dispatchChecked = (e: { detail: { node: TreeNode } }) => {
-		dispatch("toggle", { node: e.detail.node });
+	const dispatchChecked = (node: TreeNodeModel) => {
+		ontoggle?.({ node });
 	};
 
 	/**
@@ -63,7 +72,7 @@
 	 */
 	const showDiff = (e: MouseEvent) => {
 		e.stopPropagation();
-		dispatch("showDiff", { node: tree });
+		onshowdiff?.({ node: tree });
 	};
 
 	/**
@@ -72,18 +81,18 @@
 	 *
 	 * @param node - The TreeNode for which to show the diff.
 	 */
-	const dispatchShowDiff = (node: TreeNode) => {
-		dispatch("showDiff", { node });
+	const dispatchShowDiff = (node: TreeNodeModel) => {
+		onshowdiff?.({ node });
 	};
 </script>
 
 <ul class:isRoot>
 	<li>
 		{#if tree.children}
-			<!-- svelte-ignore a11y-click-events-have-key-events -->
-			<!-- svelte-ignore a11y-no-static-element-interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<span>
-				<span on:click={toggleExpansion} class="arrow" class:arrowDown>
+				<span onclick={toggleExpansion} class="arrow" class:arrowDown>
 					<Icon name="chevron-right" />
 				</span>
 				{#if !isRoot}
@@ -94,10 +103,10 @@
 							data-label={tree.name}
 							checked={tree.checked}
 							indeterminate={tree.indeterminate}
-							on:click={toggleCheck}
+							onclick={toggleCheck}
 						/>
 					{/if}
-					<span on:click={toggleExpansion}>{tree.name}</span>
+					<span onclick={toggleExpansion}>{tree.name}</span>
 				{:else}
 					{#if !readOnly}
 						<input
@@ -105,20 +114,20 @@
 							data-label={tree.name}
 							checked={tree.checked}
 							indeterminate={tree.indeterminate}
-							on:click={toggleCheck}
+							onclick={toggleCheck}
 						/>
 					{/if}
 
-					<span class="root-header" on:click={toggleExpansion}
+					<span class="root-header" onclick={toggleExpansion}
 						>{tree.name}</span
 					>
 				{/if}
 			</span>
 			{#if expanded}
 				{#each tree.children as child}
-					<svelte:self
-						on:toggle={dispatchChecked}
-						on:showDiff={(e) => dispatchShowDiff(e.detail.node)}
+					<TreeNode
+						ontoggle={(data) => dispatchChecked(data.node)}
+						onshowdiff={(data) => dispatchShowDiff(data.node)}
 						{enableShowDiff}
 						{readOnly}
 						tree={child}
@@ -126,9 +135,9 @@
 				{/each}
 			{/if}
 		{:else if !isRoot}
-			<!-- svelte-ignore a11y-no-static-element-interactions -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<span>
-				<span class="no-arrow" />
+				<span class="no-arrow"></span>
 				<Icon name="file" />
 				{#if !readOnly}
 					<input
@@ -136,11 +145,11 @@
 						data-label={tree.name}
 						checked={tree.checked}
 						indeterminate={tree.indeterminate}
-						on:click={toggleCheck}
+						onclick={toggleCheck}
 					/>
 				{/if}
-				<!-- svelte-ignore a11y-click-events-have-key-events -->
-				<span on:click={toggleExpansion}>{tree.name}</span>
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
+				<span onclick={toggleExpansion}>{tree.name}</span>
 				{#if tree.fileType === "base"}
 					<span
 						class="quartz-syncer-file-badge quartz-syncer-badge-base"
@@ -153,12 +162,12 @@
 						>CANVAS</span
 					>
 				{/if}
-				<!-- svelte-ignore a11y-click-events-have-key-events -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				{#if enableShowDiff}
 					<span
 						title="Show changes"
 						class="quartz-syncer-icon-diff"
-						on:click={showDiff}
+						onclick={showDiff}
 					>
 						<Icon name="file-diff" />
 					</span>

@@ -1,14 +1,18 @@
 <script lang="ts">
 	import type TreeNode from "src/models/TreeNode";
-	// biome-ignore lint/correctness/noUnusedImports: Used in markup
 	import Node from "src/ui/TreeView/TreeNode.svelte";
 
-	export let tree: TreeNode;
-	// biome-ignore lint/style/useConst: Svelte export
-	export let readOnly: boolean = false;
-	// biome-ignore lint/style/useConst: Svelte export
-	export let enableShowDiff: boolean = false;
-	export let showDiff: (_path: string) => void;
+	let {
+		tree,
+		readOnly = false,
+		enableShowDiff = false,
+		showDiff,
+	}: {
+		tree: TreeNode;
+		readOnly?: boolean;
+		enableShowDiff?: boolean;
+		showDiff: (_path: string) => void;
+	} = $props();
 
 	const treeMap: Record<string, TreeNode> = {};
 
@@ -56,14 +60,11 @@
 	 * This function updates the checked and indeterminate states of the parent nodes
 	 * based on the state of their children.
 	 *
-	 * @param e - The event object containing the toggled node.
+	 * @param data - The event data containing the toggled node.
 	 * @param checkAsParent - Whether to set the children's checked state based on the parent's checked state.
 	 */
-	function rebuildTree(
-		e: { detail: { node: TreeNode } },
-		checkAsParent = true,
-	) {
-		const node = e.detail.node;
+	function rebuildTree(data: { node: TreeNode }, checkAsParent = true) {
+		const node = data.node;
 		let parent = treeMap[node.path];
 		rebuildChildren(node, checkAsParent);
 
@@ -93,7 +94,7 @@
 	}
 
 	// init the tree state
-	rebuildTree({ detail: { node: tree } }, false);
+	rebuildTree({ node: tree }, false);
 </script>
 
 <div>
@@ -101,7 +102,7 @@
 		{tree}
 		{readOnly}
 		{enableShowDiff}
-		on:toggle={rebuildTree}
-		on:showDiff={(e) => showDiff(e.detail.node.path)}
+		ontoggle={rebuildTree}
+		onshowdiff={(data) => showDiff(data.node.path)}
 	/>
 </div>

@@ -1,4 +1,5 @@
 import { type App, Modal, getIcon, TFile, Vault } from "obsidian";
+import { mount, unmount } from "svelte";
 import type { TCompiledFile } from "src/compiler/SyncerPageCompiler";
 import QuartzSyncerSettings from "src/models/settings";
 import QuartzSyncerSiteManager from "src/repositoryConnection/QuartzSyncerSiteManager";
@@ -21,7 +22,7 @@ export class PublicationCenter {
 	siteManager: QuartzSyncerSiteManager;
 	vault: Vault;
 
-	publicationCenterUi!: PublicationCenterSvelte;
+	publicationCenterUi!: Record<string, unknown>;
 
 	constructor(
 		app: App,
@@ -132,7 +133,7 @@ export class PublicationCenter {
 			}
 
 			if (remoteFile && localFile) {
-				let diffView: DiffView | undefined;
+				let diffView: Record<string, unknown> | undefined;
 				const diffModal = new Modal(this.modal.app);
 				const title = notePath.split("/").pop() || "Diff";
 
@@ -145,7 +146,7 @@ export class PublicationCenter {
 					.prepend(this.getIcon("file-diff"));
 
 				diffModal.onOpen = () => {
-					diffView = new DiffView({
+					diffView = mount(DiffView, {
 						target: diffModal.contentEl,
 						props: {
 							oldContent: remoteFile,
@@ -158,7 +159,7 @@ export class PublicationCenter {
 
 				diffModal.onClose = () => {
 					if (diffView) {
-						diffView.$destroy();
+						void unmount(diffView);
 					}
 				};
 
@@ -175,13 +176,13 @@ export class PublicationCenter {
 	 */
 	open = () => {
 		this.modal.onClose = () => {
-			this.publicationCenterUi.$destroy();
+			void unmount(this.publicationCenterUi);
 		};
 
 		this.modal.onOpen = () => {
 			this.modal.contentEl.empty();
 
-			this.publicationCenterUi = new PublicationCenterSvelte({
+			this.publicationCenterUi = mount(PublicationCenterSvelte, {
 				target: this.modal.contentEl,
 				props: {
 					publishStatusManager: this.publishStatusManager,

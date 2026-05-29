@@ -16,18 +16,22 @@
 	// biome-ignore lint/correctness/noUnusedImports: Used in markup
 	import TreeView from "src/ui/TreeView/TreeView.svelte";
 
-	export let publishStatusManager: IPublishStatusManager;
-	export let publisher: Publisher;
-	export let showDiff: (_path: string) => void;
-	export let close: () => void;
+	let {
+		publishStatusManager,
+		publisher,
+		showDiff,
+		close,
+	}: {
+		publishStatusManager: IPublishStatusManager;
+		publisher: Publisher;
+		showDiff: (_path: string) => void;
+		close: () => void;
+	} = $props();
 
-	let publishStatus: PublishStatus;
-	// biome-ignore lint/correctness/noUnusedVariables: Used in markup
-	let showPublishingView: boolean = false;
-	// biome-ignore lint/correctness/noUnusedVariables: Used in markup
-	let progressText = "Preparing to load...";
-	// biome-ignore lint/correctness/noUnusedVariables: Used in markup
-	let progressIndexText = "Notes processed: 0/0";
+	let publishStatus: PublishStatus = $state(undefined!);
+	let showPublishingView: boolean = $state(false);
+	let progressText = $state("Preparing to load...");
+	let progressIndexText = $state("Notes processed: 0/0");
 	let controller: LoadingController;
 	let publishController: LoadingController;
 
@@ -204,89 +208,97 @@
 		return cog;
 	};
 
-	$: publishedNotesTree =
+	let publishedNotesTree = $derived(
 		publishStatus &&
-		filePathsToTree(
-			publishStatus.publishedNotes.map((note) => note.getVaultPath()),
-			"Unchanged notes" +
-				(publishStatus.publishedNotes.length > 0
-					? ` (${
-							publishStatus.publishedNotes.length === 1
-								? "1 note"
-								: `${publishStatus.publishedNotes.length} notes`
-						})`
-					: ""),
-		);
+			filePathsToTree(
+				publishStatus.publishedNotes.map((note) => note.getVaultPath()),
+				"Unchanged notes" +
+					(publishStatus.publishedNotes.length > 0
+						? ` (${
+								publishStatus.publishedNotes.length === 1
+									? "1 note"
+									: `${publishStatus.publishedNotes.length} notes`
+							})`
+						: ""),
+			),
+	);
 
-	$: changedNotesTree =
+	let changedNotesTree = $derived(
 		publishStatus &&
-		filePathsToTree(
-			publishStatus.changedNotes.map((note) => note.getVaultPath()),
-			"Changed notes" +
-				(publishStatus.changedNotes.length > 0
-					? ` (${
-							publishStatus.changedNotes.length === 1
-								? "1 note"
-								: `${publishStatus.changedNotes.length} notes`
-						})`
-					: ""),
-		);
+			filePathsToTree(
+				publishStatus.changedNotes.map((note) => note.getVaultPath()),
+				"Changed notes" +
+					(publishStatus.changedNotes.length > 0
+						? ` (${
+								publishStatus.changedNotes.length === 1
+									? "1 note"
+									: `${publishStatus.changedNotes.length} notes`
+							})`
+						: ""),
+			),
+	);
 
-	$: deletedNoteTree =
+	let deletedNoteTree = $derived(
 		publishStatus &&
-		filePathsToTree(
-			[
-				...publishStatus.deletedNotePaths,
-				...publishStatus.deletedBlobPaths,
-			].map((path) => path.path),
-			"Published notes (select to unpublish)" +
-				(publishStatus.changedNotes.length +
-					publishStatus.publishedNotes.length >
-				0
-					? ` (${
-							publishStatus.changedNotes.length +
-								publishStatus.publishedNotes.length ===
-							1
-								? "1 note"
-								: `${
-										publishStatus.changedNotes.length +
-										publishStatus.publishedNotes.length
-									} notes`
-						})`
-					: ""),
-		);
+			filePathsToTree(
+				[
+					...publishStatus.deletedNotePaths,
+					...publishStatus.deletedBlobPaths,
+				].map((path) => path.path),
+				"Published notes (select to unpublish)" +
+					(publishStatus.changedNotes.length +
+						publishStatus.publishedNotes.length >
+					0
+						? ` (${
+								publishStatus.changedNotes.length +
+									publishStatus.publishedNotes.length ===
+								1
+									? "1 note"
+									: `${
+											publishStatus.changedNotes.length +
+											publishStatus.publishedNotes.length
+										} notes`
+							})`
+						: ""),
+			),
+	);
 
-	$: unpublishedNoteTree =
+	let unpublishedNoteTree = $derived(
 		publishStatus &&
-		filePathsToTree(
-			publishStatus.unpublishedNotes.map((note) => note.getVaultPath()),
-			"Unpublished notes" +
-				(publishStatus.unpublishedNotes.length > 0
-					? ` (${
-							publishStatus.unpublishedNotes.length === 1
-								? "1 note"
-								: `${publishStatus.unpublishedNotes.length} notes`
-						})`
-					: ""),
-		);
+			filePathsToTree(
+				publishStatus.unpublishedNotes.map((note) =>
+					note.getVaultPath(),
+				),
+				"Unpublished notes" +
+					(publishStatus.unpublishedNotes.length > 0
+						? ` (${
+								publishStatus.unpublishedNotes.length === 1
+									? "1 note"
+									: `${publishStatus.unpublishedNotes.length} notes`
+							})`
+						: ""),
+			),
+	);
 
-	let unpublishedToPublish: Array<CompiledPublishFile> = [];
-	let changedToPublish: Array<CompiledPublishFile> = [];
-	let pathsToDelete: Array<string> = [];
+	let unpublishedToPublish: Array<CompiledPublishFile> = $state([]);
+	let changedToPublish: Array<CompiledPublishFile> = $state([]);
+	let pathsToDelete: Array<string> = $state([]);
 
-	// biome-ignore lint/correctness/noUnusedVariables: Used in markup
-	let processingPaths: Array<string> = [];
-	let publishedPaths: Array<string> = []; // biome-ignore lint/style/useConst: Svelte state
-	let failedPublish: Array<string> = [];
+	let processingPaths: Array<string> = $state([]);
+	let publishedPaths: Array<string> = $state([]);
+	let failedPublish: Array<string> = $state([]);
 
-	$: publishProgress =
+	let publishProgress = $derived(
 		((publishedPaths.length + failedPublish.length) /
 			(unpublishedToPublish.length +
 				changedToPublish.length +
 				pathsToDelete.length)) *
-		100;
+			100,
+	);
 
-	$: publishController?.setProgress(publishProgress);
+	$effect(() => {
+		publishController?.setProgress(publishProgress);
+	});
 
 	/**
 	 * Traverses the tree and collects the paths of all leaf nodes that are checked.
@@ -422,7 +434,7 @@
 			<div
 				use:loadingProgressBar
 				class="quartz-syncer-progress-bar-container"
-			/>
+			></div>
 			<div class="quartz-syncer-progress-bar-text">
 				{progressIndexText}
 			</div>
@@ -450,7 +462,7 @@
 		<div class="quartz-syncer-publisher-footer">
 			<button
 				class="quartz-syncer-publisher-button"
-				on:click={publishMarkedNotes}>PUBLISH SELECTED CHANGES</button
+				onclick={publishMarkedNotes}>PUBLISH SELECTED CHANGES</button
 			>
 		</div>
 	{:else}
@@ -476,7 +488,7 @@
 					<div
 						use:publishProgressBarAction
 						class="quartz-syncer-progress-bar-container"
-					/>
+					></div>
 				</div>
 			</div>
 
@@ -522,7 +534,7 @@
 			<hr class="quartz-syncer-publisher-footer-separator" />
 
 			<div class="quartz-syncer-publisher-footer">
-				<button class="quartz-syncer-publisher-button" on:click={close}
+				<button class="quartz-syncer-publisher-button" onclick={close}
 					>DONE</button
 				>
 			</div>

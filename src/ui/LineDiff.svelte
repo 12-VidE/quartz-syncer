@@ -1,6 +1,6 @@
 <script lang="ts">
-	import * as Diff from "diff";
-	export let diff: Diff.Change[];
+	import type { Change } from "diff";
+	let { diff }: { diff: Change[] } = $props();
 </script>
 
 <div>
