@@ -1,5 +1,4 @@
 import { Document, parseDocument } from "yaml";
-import { Base64 } from "js-base64";
 import Logger from "js-logger";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzV5Config, QuartzLockFile } from "./QuartzConfigTypes";
@@ -95,7 +94,10 @@ export class QuartzConfigService {
 
 			if (!file) return null;
 
-			const content = Base64.decode(file.content);
+			/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+			const content = Buffer.from(file.content, "base64").toString(
+				"utf-8",
+			);
 
 			return JSON.parse(content) as QuartzLockFile;
 		} catch (error) {
@@ -134,7 +136,10 @@ export class QuartzConfigService {
 
 			if (yamlFile) {
 				return {
-					content: Base64.decode(yamlFile.content),
+					/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+					content: Buffer.from(yamlFile.content, "base64").toString(
+						"utf-8",
+					),
 					format: "yaml",
 				};
 			}
@@ -147,7 +152,10 @@ export class QuartzConfigService {
 
 			if (jsonFile) {
 				return {
-					content: Base64.decode(jsonFile.content),
+					/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+					content: Buffer.from(jsonFile.content, "base64").toString(
+						"utf-8",
+					),
 					format: "json",
 				};
 			}

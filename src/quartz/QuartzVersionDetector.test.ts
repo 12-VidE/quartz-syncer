@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { QuartzVersionDetector } from "./QuartzVersionDetector";
 import type { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
-import { Base64 } from "js-base64";
+import { Buffer } from "buffer";
 
 function createMockRepo(
 	existingFiles: string[],
@@ -16,7 +16,7 @@ function createMockRepo(
 			const content = fileContents?.[path] ?? "";
 
 			return {
-				content: Base64.encode(content),
+				content: Buffer.from(content).toString("base64"),
 				sha: "mock-sha",
 				path,
 				type: "file" as const,

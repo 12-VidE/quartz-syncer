@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { QuartzConfigService } from "./QuartzConfigService";
 import type { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
-import { Base64 } from "js-base64";
+import { Buffer } from "buffer";
 
 function createMockRepo(files: Record<string, string>): RepositoryConnection {
 	return {
@@ -13,7 +13,7 @@ function createMockRepo(files: Record<string, string>): RepositoryConnection {
 			}
 
 			return {
-				content: Base64.encode(content),
+				content: Buffer.from(content).toString("base64"),
 				sha: "mock-sha",
 				path,
 				type: "file" as const,
@@ -269,7 +269,8 @@ describe("QuartzConfigService", () => {
 				getRawFile: async (path: string) => {
 					if (path === "quartz.config.yaml") {
 						return {
-							content: Base64.encode(SAMPLE_YAML),
+							content:
+								Buffer.from(SAMPLE_YAML).toString("base64"),
 							sha: "mock-sha",
 							path,
 							type: "file" as const,
@@ -412,7 +413,8 @@ plugins: []
 				getRawFile: async (path: string) => {
 					if (path === "quartz.config.yaml") {
 						return {
-							content: Base64.encode(SAMPLE_YAML),
+							content:
+								Buffer.from(SAMPLE_YAML).toString("base64"),
 							sha: "mock-sha",
 							path,
 							type: "file" as const,
@@ -452,7 +454,8 @@ plugins: []
 				getRawFile: async (path: string) => {
 					if (path === "quartz.plugins.json") {
 						return {
-							content: Base64.encode(SAMPLE_JSON),
+							content:
+								Buffer.from(SAMPLE_JSON).toString("base64"),
 							sha: "mock-sha",
 							path,
 							type: "file" as const,
@@ -487,7 +490,8 @@ plugins: []
 				getRawFile: async (path: string) => {
 					if (path === "quartz.config.yaml") {
 						return {
-							content: Base64.encode(SAMPLE_YAML),
+							content:
+								Buffer.from(SAMPLE_YAML).toString("base64"),
 							sha: "mock-sha",
 							path,
 							type: "file" as const,

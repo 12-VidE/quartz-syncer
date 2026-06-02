@@ -1,4 +1,3 @@
-import { Base64 } from "js-base64";
 import Logger from "js-logger";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzV5Config } from "./QuartzConfigTypes";
@@ -35,7 +34,11 @@ export class QuartzTemplateService {
 			if (!file) return null;
 
 			const { parseDocument } = await import("yaml");
-			const content = Base64.decode(file.content);
+
+			/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+			const content = Buffer.from(file.content, "base64").toString(
+				"utf-8",
+			);
 			const doc = parseDocument(content, { keepSourceTokens: true });
 			const config = doc.toJSON() as QuartzV5Config;
 

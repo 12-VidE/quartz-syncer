@@ -1,6 +1,5 @@
 import { FrontMatterCache, TFile } from "obsidian";
 import QuartzSyncerSettings from "src/models/settings";
-import { DateTime } from "luxon";
 
 /**
  * FileMetadataManager class.
@@ -41,7 +40,7 @@ export class FileMetadataManager {
 			}
 		}
 
-		return DateTime.fromMillis(this.file.stat.ctime).toISO() as string;
+		return new Date(this.file.stat.ctime).toISOString();
 	}
 
 	/**
@@ -64,7 +63,7 @@ export class FileMetadataManager {
 			}
 		}
 
-		return DateTime.fromMillis(this.file.stat.mtime).toISO() as string;
+		return new Date(this.file.stat.mtime).toISOString();
 	}
 
 	/**
@@ -87,6 +86,6 @@ export class FileMetadataManager {
 			}
 		}
 
-		return DateTime.fromMillis(this.file.stat.mtime).toISO() as string;
+		return new Date(this.file.stat.mtime).toISOString();
 	}
 }

@@ -1,7 +1,6 @@
 import type QuartzSyncerSettings from "src/models/settings";
 import type { GitRemoteSettings } from "src/models/settings";
 import { type MetadataCache } from "obsidian";
-import { Base64 } from "js-base64";
 import {
 	RepositoryConnection,
 	TRepositoryContent,
@@ -68,7 +67,10 @@ export default class QuartzSyncerSiteManager {
 			return "";
 		}
 
-		const content = Base64.decode(response.content);
+		/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+		const content = Buffer.from(response.content, "base64").toString(
+			"utf-8",
+		);
 
 		return content;
 	}

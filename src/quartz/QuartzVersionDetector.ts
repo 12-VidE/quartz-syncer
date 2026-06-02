@@ -1,4 +1,3 @@
-import { Base64 } from "js-base64";
 import Logger from "js-logger";
 import type { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzVersion } from "./QuartzConfigTypes";
@@ -54,7 +53,10 @@ export class QuartzVersionDetector {
 
 			if (!file) return null;
 
-			const content = Base64.decode(file.content);
+			/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+			const content = Buffer.from(file.content, "base64").toString(
+				"utf-8",
+			);
 			const pkg = JSON.parse(content) as { version?: string };
 
 			return pkg.version ?? null;
