@@ -1067,10 +1067,8 @@ export class RepositoryConnection {
 
 					await this.ensureDirectory(assetPath);
 
-					const binaryContent = Uint8Array.from(
-						atob(asset.content),
-						(c) => c.charCodeAt(0),
-					);
+					/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+					const binaryContent = Buffer.from(asset.content, "base64");
 
 					await this.getFs().promises.writeFile(
 						assetFullPath,

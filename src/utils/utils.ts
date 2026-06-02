@@ -598,7 +598,8 @@ function svgToData(svgElement: SVGSVGElement): string {
 	const serializer = new XMLSerializer();
 	const svgString = serializer.serializeToString(svgElement);
 
-	const encodedData = btoa(decodeURIComponent(encodeURIComponent(svgString)));
+	/* eslint-disable-next-line no-undef -- Buffer polyfill available at runtime */
+	const encodedData = Buffer.from(svgString).toString("base64");
 
 	return `data:image/svg+xml;base64,${encodedData}`;
 }
