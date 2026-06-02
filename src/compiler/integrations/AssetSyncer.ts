@@ -2,7 +2,6 @@ import { Notice } from "obsidian";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import { integrationRegistry } from "./registry";
 import QuartzSyncerSettings from "src/models/settings";
-import Logger from "js-logger";
 
 const SYNCER_STYLES_DIR = "quartz/styles/syncer";
 const INDEX_FILE = "_index.scss";
@@ -47,7 +46,7 @@ export class AssetSyncer {
 					result.filesToDelete.length > 0 ||
 					result.filesToStage.size > 0
 				) {
-					Logger.info(
+					console.debug(
 						`Will remove ${result.filesToDelete.length} syncer style files`,
 					);
 				}
@@ -69,17 +68,17 @@ export class AssetSyncer {
 
 				if (customScssUpdate) {
 					result.filesToStage.set(CUSTOM_SCSS_PATH, customScssUpdate);
-					Logger.info("Will add syncer import to custom.scss");
+					console.debug("Will add syncer import to custom.scss");
 				}
 
-				Logger.info(
+				console.debug(
 					`Collected ${result.filesToStage.size} integration style files`,
 				);
 			}
 
 			result.success = true;
 		} catch (error) {
-			Logger.error("Failed to collect integration assets", error);
+			console.error("Failed to collect integration assets", error);
 
 			new Notice(
 				"Quartz Syncer: Failed to collect integration styles. Check console for details.",
@@ -113,7 +112,7 @@ export class AssetSyncer {
 				}
 			}
 		} catch (error) {
-			Logger.debug(
+			console.debug(
 				"Could not list syncer style files for cleanup",
 				error,
 			);
@@ -134,7 +133,7 @@ export class AssetSyncer {
 				}
 			}
 		} catch {
-			Logger.debug("custom.scss not found, no cleanup needed");
+			console.debug("custom.scss not found, no cleanup needed");
 		}
 
 		return { filesToDelete, customScssUpdate };
@@ -158,7 +157,7 @@ export class AssetSyncer {
 					).toString("utf-8");
 				}
 			} catch {
-				Logger.debug("custom.scss not found, will create with import");
+				console.debug("custom.scss not found, will create with import");
 			}
 
 			if (!content.includes(SYNCER_IMPORT)) {
@@ -167,7 +166,7 @@ export class AssetSyncer {
 
 			return null;
 		} catch (error) {
-			Logger.error("Failed to check custom.scss", error);
+			console.error("Failed to check custom.scss", error);
 			throw error;
 		}
 	}

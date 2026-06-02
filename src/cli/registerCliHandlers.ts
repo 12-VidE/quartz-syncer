@@ -19,7 +19,6 @@ import { createVersionHandler } from "./handlers/versionHandler";
 import { createPluginHandler } from "./handlers/pluginHandler";
 import { createQuartzConfigHandler } from "./handlers/quartzConfigHandler";
 import { createHelpHandler } from "./handlers/helpHandler";
-import Logger from "js-logger";
 
 /**
  * Register all CLI handlers for the plugin.
@@ -29,7 +28,7 @@ export function registerCliHandlers(plugin: QuartzSyncer): boolean {
 	const target = plugin as unknown as RegisterCliHandlerTarget;
 
 	if (typeof target.registerCliHandler !== "function") {
-		Logger.debug(
+		console.debug(
 			"Skipping CLI handler registration: registerCliHandler is unavailable.",
 		);
 
@@ -87,7 +86,7 @@ export function registerCliHandlers(plugin: QuartzSyncer): boolean {
 	createPluginHandler(register, plugin);
 	createQuartzConfigHandler(register, plugin);
 
-	Logger.info("CLI handlers registered successfully.");
+	console.debug("CLI handlers registered successfully.");
 
 	return true;
 }

@@ -1,5 +1,3 @@
-import { ILogLevel } from "js-logger";
-
 /**
  * Git authentication configuration.
  * Used as a data transfer type for RepositoryConnection and related services.
@@ -205,5 +203,4 @@ export default interface QuartzSyncerSettings {
 	/** Developer settings */
 	ENABLE_DEVELOPER_TOOLS?: boolean;
 	devPluginPath?: string;
-	logLevel?: ILogLevel;
 }

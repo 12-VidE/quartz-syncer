@@ -8,9 +8,6 @@ import type {
 	QuartzV5Config,
 } from "src/quartz/QuartzConfigTypes";
 import { getPluginSourceKey } from "src/quartz/QuartzPluginUtils";
-import Logger from "js-logger";
-
-const logger = Logger.get("plugin-browser-modal");
 
 type InstallPluginFn = (source: QuartzPluginSource) => Promise<void>;
 
@@ -53,7 +50,7 @@ export class PluginBrowserModal extends Modal {
 		try {
 			this.allPlugins = await this.registry.getPlugins();
 		} catch (error) {
-			logger.warn("Failed to load registry", error);
+			console.debug("Failed to load registry", error);
 			this.allPlugins = [];
 		}
 
@@ -253,7 +250,7 @@ export class PluginBrowserModal extends Modal {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn(`Failed to install ${entry.name}`, error);
+			console.debug(`Failed to install ${entry.name}`, error);
 			new Notice(`Failed to install "${entry.name}": ${message}`);
 			button.textContent = "Install";
 			button.disabled = false;

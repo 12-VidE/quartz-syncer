@@ -45,9 +45,6 @@ import { QuartzPluginRegistry } from "src/quartz/QuartzPluginRegistry";
 import { PluginBrowserModal } from "src/views/PluginBrowser/PluginBrowserModal";
 import { ConfirmModal } from "src/ui/ConfirmModal";
 import { PluginOptionsModal } from "src/views/PluginOptionsModal";
-import Logger from "js-logger";
-
-const logger = Logger.get("quartz-v5-settings");
 
 const DEFAULT_LIGHT_COLORS: QuartzColorScheme = {
 	light: "#faf8f8",
@@ -502,7 +499,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to load Quartz v5 config", error);
+			console.debug("Failed to load Quartz v5 config", error);
 			this.renderError(message);
 		} finally {
 			this.isLoading = false;
@@ -571,7 +568,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to save Quartz config", error);
+			console.debug("Failed to save Quartz config", error);
 			new Notice(`Failed to save configuration: ${message}`);
 		} finally {
 			this.isSaving = false;
@@ -877,7 +874,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to check for Quartz upgrade", error);
+			console.debug("Failed to check for Quartz upgrade", error);
 			new Notice(`Failed to check for Quartz upgrade: ${message}`);
 		} finally {
 			this.isCheckingUpgrade = false;
@@ -920,7 +917,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to upgrade Quartz", error);
+			console.debug("Failed to upgrade Quartz", error);
 			new Notice(`Failed to upgrade Quartz: ${message}`);
 		} finally {
 			this.isUpgrading = false;
@@ -1548,7 +1545,9 @@ export class QuartzV5Page extends SettingPage {
 			});
 
 			if (response.status < 200 || response.status >= 300) {
-				logger.warn(`Failed to fetch themes.json: ${response.status}`);
+				console.debug(
+					`Failed to fetch themes.json: ${response.status}`,
+				);
 
 				return;
 			}
@@ -1566,7 +1565,7 @@ export class QuartzV5Page extends SettingPage {
 
 			this.cachedThemesJson = data.themes;
 		} catch (error) {
-			logger.warn("Failed to fetch themes.json:", error);
+			console.debug("Failed to fetch themes.json:", error);
 		}
 	}
 
@@ -1603,7 +1602,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to check for plugin updates", error);
+			console.debug("Failed to check for plugin updates", error);
 			new Notice(`Failed to check for updates: ${message}`);
 		} finally {
 			this.isCheckingUpdates = false;
@@ -1643,7 +1642,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn(`Failed to update ${pluginName}`, error);
+			console.debug(`Failed to update ${pluginName}`, error);
 			new Notice(`Failed to update ${pluginName}: ${message}`);
 		}
 	}
@@ -1690,7 +1689,7 @@ export class QuartzV5Page extends SettingPage {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.warn("Failed to update plugins", error);
+			console.debug("Failed to update plugins", error);
 			new Notice(`Failed to update plugins: ${message}`);
 		}
 	}

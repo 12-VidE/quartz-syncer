@@ -11,7 +11,6 @@ import {
 	FRONTMATTER_REGEX,
 	DATAVIEW_LINK_TARGET_BLANK_REGEX,
 } from "src/utils/regexes";
-import Logger from "js-logger";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
@@ -199,7 +198,7 @@ export class SyncerPageCompiler {
 			text = text.replace(wikilinkRegex, "[[$1]]");
 			text = text.replace(markdownLinkRegex, "[$1]($2)");
 		} catch (e) {
-			Logger.error(
+			console.error(
 				`Error while stripping vault path from text: ${String(e)}`,
 			);
 		}
@@ -356,7 +355,7 @@ export class SyncerPageCompiler {
 				}
 				/* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument -- end canvas JSON parsing block */
 			} catch {
-				Logger.warn(`Failed to parse canvas file: ${file.getPath()}`);
+				console.debug(`Failed to parse canvas file: ${file.getPath()}`);
 			}
 
 			return assets;

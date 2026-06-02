@@ -1,5 +1,4 @@
 import { Component, Notice, htmlToMarkdown } from "obsidian";
-import Logger from "js-logger";
 import {
 	PluginIntegration,
 	PatternDescriptor,
@@ -31,7 +30,7 @@ function tryDVEvaluate(
 		});
 		result = dataviewResult?.toString() ?? "";
 	} catch (e) {
-		Logger.warn("dvapi.tryEvaluate did not yield any result", e);
+		console.debug("dvapi.tryEvaluate did not yield any result", e);
 	}
 
 	return result;
@@ -172,7 +171,7 @@ export const DataviewIntegration: PluginIntegration = {
 					return match.fullMatch;
 			}
 		} catch (e) {
-			Logger.error(e);
+			console.error(e);
 
 			new Notice(
 				"Quartz Syncer: Unable to render dataview query. Please update the dataview plugin to the latest version.",

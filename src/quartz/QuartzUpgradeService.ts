@@ -2,9 +2,6 @@ import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnect
 import { QuartzVersionDetector } from "./QuartzVersionDetector";
 import type { GitAuth } from "src/models/settings";
 import { requestUrl } from "obsidian";
-import Logger from "js-logger";
-
-const logger = Logger.get("quartz-upgrade-service");
 
 const UPSTREAM_PACKAGE_JSON_URL =
 	"https://raw.githubusercontent.com/jackyzha0/quartz/v5/package.json";
@@ -38,7 +35,7 @@ export class QuartzUpgradeService {
 					this.userRepo,
 				);
 		} catch (error) {
-			logger.debug("Could not read current Quartz version", error);
+			console.debug("Could not read current Quartz version", error);
 		}
 
 		let upstreamVersion: string | null = null;
@@ -48,7 +45,7 @@ export class QuartzUpgradeService {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.debug("Could not reach upstream Quartz", error);
+			console.debug("Could not reach upstream Quartz", error);
 
 			return {
 				currentVersion,
@@ -83,15 +80,18 @@ export class QuartzUpgradeService {
 					UPSTREAM_AUTH,
 					UPSTREAM_BRANCH,
 				);
-			logger.info(`Upstream HEAD commit: ${latestUpstreamSha ?? "null"}`);
+
+			console.debug(
+				`Upstream HEAD commit: ${latestUpstreamSha ?? "null"}`,
+			);
 		} catch (error) {
-			logger.warn("Could not fetch upstream HEAD commit SHA", error);
+			console.debug("Could not fetch upstream HEAD commit SHA", error);
 		}
 
 		let hasNewerCommits = false;
 
 		if (latestUpstreamSha) {
-			logger.info(
+			console.debug(
 				`Checking if ${latestUpstreamSha.slice(
 					0,
 					7,
@@ -102,13 +102,13 @@ export class QuartzUpgradeService {
 				await this.userRepo.hasCommitInHistory(latestUpstreamSha);
 			hasNewerCommits = !foundInHistory;
 
-			logger.info(
+			console.debug(
 				`Commit ${latestUpstreamSha.slice(0, 7)} ${
 					foundInHistory ? "found" : "NOT found"
 				} in user repo`,
 			);
 		} else {
-			logger.warn(
+			console.debug(
 				"Could not determine upstream HEAD SHA, skipping commit check",
 			);
 		}
@@ -129,7 +129,7 @@ export class QuartzUpgradeService {
 		error?: string;
 	}> {
 		try {
-			logger.info("Starting Quartz upgrade from upstream");
+			console.debug("Starting Quartz upgrade from upstream");
 
 			const result = await this.userRepo.upgradeFromUpstream(
 				UPSTREAM_REPO_URL,
@@ -137,12 +137,12 @@ export class QuartzUpgradeService {
 			);
 
 			if (result.alreadyMerged) {
-				logger.info("Quartz is already up to date with upstream");
+				console.debug("Quartz is already up to date with upstream");
 
 				return { success: true, alreadyMerged: true, oid: result.oid };
 			}
 
-			logger.info(
+			console.debug(
 				`Quartz upgraded successfully to ${result.oid.slice(0, 7)}`,
 			);
 
@@ -158,7 +158,7 @@ export class QuartzUpgradeService {
 				message.includes("Merges with conflicts");
 
 			if (isConflict) {
-				logger.warn(`Upgrade aborted: ${message}`);
+				console.debug(`Upgrade aborted: ${message}`);
 
 				return {
 					success: false,
@@ -166,7 +166,7 @@ export class QuartzUpgradeService {
 				};
 			}
 
-			logger.error("Quartz upgrade failed", error);
+			console.error("Quartz upgrade failed", error);
 
 			return {
 				success: false,

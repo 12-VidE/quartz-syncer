@@ -1,5 +1,4 @@
 import { Component, Notice } from "obsidian";
-import Logger from "js-logger";
 import {
 	PluginIntegration,
 	PatternDescriptor,
@@ -439,7 +438,7 @@ async function tryRenderStatblock(
 	try {
 		void api.renderMarkdown(query, div, filePath, component);
 	} catch (error) {
-		Logger.error(error);
+		console.error(error);
 
 		new Notice(
 			`Quartz Syncer: Fantasy Statblocks execution error: ${String(
@@ -528,7 +527,7 @@ export const FantasyStatblocksIntegration: PluginIntegration = {
 				"",
 			);
 		} catch (error) {
-			Logger.error(error);
+			console.error(error);
 
 			return match.fullMatch;
 		}

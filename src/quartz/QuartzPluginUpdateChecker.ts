@@ -10,9 +10,6 @@ import {
 	getSourceRef,
 } from "./QuartzPluginUtils";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
-import Logger from "js-logger";
-
-const logger = Logger.get("quartz-plugin-update-checker");
 
 export interface PluginUpdateStatus {
 	name: string;
@@ -96,7 +93,7 @@ export class QuartzPluginUpdateChecker {
 		} catch (error) {
 			const message =
 				error instanceof Error ? error.message : String(error);
-			logger.debug(`Update check failed for ${sourceKey}`, error);
+			console.debug(`Update check failed for ${sourceKey}`, error);
 
 			return {
 				name: sourceKey,

@@ -1,8 +1,5 @@
 import type { QuartzPluginSource } from "./QuartzConfigTypes";
 import { requestUrl } from "obsidian";
-import Logger from "js-logger";
-
-const logger = Logger.get("quartz-plugin-registry");
 
 const REGISTRY_URL =
 	"https://raw.githubusercontent.com/quartz-community/registry/main/registry.json";
@@ -68,7 +65,7 @@ export class QuartzPluginRegistry {
 			const response = await requestUrl({ url: REGISTRY_URL });
 
 			if (response.status < 200 || response.status >= 300) {
-				logger.warn(
+				console.debug(
 					`Failed to fetch plugin registry: ${response.status}`,
 				);
 
@@ -79,7 +76,7 @@ export class QuartzPluginRegistry {
 
 			return data.plugins ?? [];
 		} catch (error) {
-			logger.warn("Failed to fetch plugin registry:", error);
+			console.debug("Failed to fetch plugin registry:", error);
 
 			return [];
 		}

@@ -1,8 +1,5 @@
-import Logger from "js-logger";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzV5Config } from "./QuartzConfigTypes";
-
-const logger = Logger.get("quartz-template-service");
 
 const TEMPLATES_DIR = "quartz/cli/templates";
 const BUILT_IN_FRAMES = ["default", "full-width", "minimal"];
@@ -44,7 +41,7 @@ export class QuartzTemplateService {
 
 			return { name: templateName, config };
 		} catch (error) {
-			logger.debug(`Could not read template ${templateName}`, error);
+			console.debug(`Could not read template ${templateName}`, error);
 
 			return null;
 		}

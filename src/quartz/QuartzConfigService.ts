@@ -1,9 +1,6 @@
 import { Document, parseDocument } from "yaml";
-import Logger from "js-logger";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzV5Config, QuartzLockFile } from "./QuartzConfigTypes";
-
-const logger = Logger.get("quartz-config-service");
 
 const CONFIG_YAML_PATH = "quartz.config.yaml";
 const CONFIG_JSON_PATH = "quartz.plugins.json";
@@ -101,7 +98,7 @@ export class QuartzConfigService {
 
 			return JSON.parse(content) as QuartzLockFile;
 		} catch (error) {
-			logger.debug("Could not read lock file", error);
+			console.debug("Could not read lock file", error);
 
 			return null;
 		}
@@ -144,7 +141,7 @@ export class QuartzConfigService {
 				};
 			}
 		} catch {
-			logger.debug("No YAML config found, trying JSON fallback");
+			console.debug("No YAML config found, trying JSON fallback");
 		}
 
 		try {
@@ -160,7 +157,7 @@ export class QuartzConfigService {
 				};
 			}
 		} catch {
-			logger.debug("No JSON config found either");
+			console.debug("No JSON config found either");
 		}
 
 		throw new Error(

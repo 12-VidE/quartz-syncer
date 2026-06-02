@@ -1,8 +1,5 @@
 import { App, SecretStorage } from "obsidian";
-import Logger from "js-logger";
 import QuartzSyncerSettings from "src/models/settings";
-
-const logger = Logger.get("secret-storage-service");
 
 const GIT_AUTH_SECRET_ID = "quartz-syncer-git-token";
 
@@ -27,20 +24,20 @@ export class SecretStorageService {
 
 	setToken(token: string): void {
 		if (!token) {
-			logger.warn("Attempted to store empty token");
+			console.debug("Attempted to store empty token");
 
 			return;
 		}
 
 		this.secretStorage.setSecret(GIT_AUTH_SECRET_ID, token);
 		this.cachedToken = token;
-		logger.info("Git authentication token stored in secure storage");
+		console.debug("Git authentication token stored in secure storage");
 	}
 
 	clearToken(): void {
 		this.secretStorage.setSecret(GIT_AUTH_SECRET_ID, "");
 		this.cachedToken = null;
-		logger.info("Git authentication token cleared from secure storage");
+		console.debug("Git authentication token cleared from secure storage");
 	}
 
 	hasToken(): boolean {

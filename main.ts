@@ -11,7 +11,6 @@ import { QuartzSyncerSettingTab } from "./src/views/QuartzSyncerSettingTab";
 import { DataStore } from "src/publishFile/DataStore";
 import { SecretStorageService } from "src/utils/SecretStorageService";
 import { ExtendedCacheService } from "src/services/ExtendedCacheService";
-import Logger from "js-logger";
 import { registerCliHandlers } from "src/cli/registerCliHandlers";
 
 /**
@@ -135,16 +134,7 @@ const DEFAULT_SETTINGS: QuartzSyncerSettings = {
 
 	/** Developer settings */
 	ENABLE_DEVELOPER_TOOLS: false,
-	logLevel: Logger.OFF,
 };
-
-Logger.useDefaults({
-	defaultLevel: Logger.WARN,
-	formatter: function (messages, _context) {
-		messages.unshift(new Date().toUTCString());
-		messages.unshift("QS: ");
-	},
-});
 
 /**
  * QuartzSyncer plugin main class.
@@ -168,11 +158,7 @@ export default class QuartzSyncer extends Plugin {
 		await this.loadSettings();
 		this.extendedCache = new ExtendedCacheService(this.app);
 
-		if (this.settings.logLevel) Logger.setLevel(this.settings.logLevel);
-
-		Logger.info("Initializing QuartzSyncer plugin v" + this.appVersion);
-
-		Logger.info("Quartz Syncer log level set to " + Logger.getLevel().name);
+		console.debug("Initializing QuartzSyncer plugin v" + this.appVersion);
 		this.addSettingTab(new QuartzSyncerSettingTab(this.app, this));
 
 		await this.addCommands();
@@ -208,7 +194,7 @@ export default class QuartzSyncer extends Plugin {
 	 * This method can be used to handle changes made to the settings outside of the plugin.
 	 */
 	async onExternalSettingsChange() {
-		Logger.info("External settings change detected, reloading settings.");
+		console.debug("External settings change detected, reloading settings.");
 
 		await this.compareDataToCache();
 	}
@@ -270,7 +256,7 @@ export default class QuartzSyncer extends Plugin {
 		const hasNewSettings = this.settings.gitRemoteUrl;
 
 		if (hasLegacySettings && !hasNewSettings) {
-			Logger.info(
+			console.debug(
 				"Migrating legacy GitHub settings to flat Git settings",
 			);
 
@@ -307,7 +293,7 @@ export default class QuartzSyncer extends Plugin {
 		const raw = this.settings as unknown as Record<string, unknown>;
 
 		if (raw["git"] && typeof raw["git"] === "object") {
-			Logger.info("Migrating nested git settings to flat keys");
+			console.debug("Migrating nested git settings to flat keys");
 
 			const git = raw["git"] as Record<string, unknown>;
 			const auth = (git["auth"] as Record<string, unknown>) || {};
@@ -484,13 +470,13 @@ export default class QuartzSyncer extends Plugin {
 				this.settings.cacheTimestamp,
 				this,
 			);
-			Logger.info(`Cache cleared for file: ${activeFile.path}`);
+			console.debug(`Cache cleared for file: ${activeFile.path}`);
 
 			new Notice(
 				`Quartz Syncer: Cache cleared for file: ${activeFile.path}`,
 			);
 		} else {
-			Logger.warn("Cache is disabled, no action taken.");
+			console.debug("Cache is disabled, no action taken.");
 			new Notice("Quartz Syncer: Cache is disabled, no action taken.");
 		}
 	}
@@ -512,7 +498,7 @@ export default class QuartzSyncer extends Plugin {
 			);
 
 			if (!confirmation) {
-				Logger.info("Cache clearing cancelled by user.");
+				console.debug("Cache clearing cancelled by user.");
 				new Notice("Quartz Syncer: Cache clearing cancelled.");
 
 				return;
@@ -530,10 +516,10 @@ export default class QuartzSyncer extends Plugin {
 					this,
 				);
 				await this.datastore.recreate();
-				Logger.info("Cache cleared for all files.");
+				console.debug("Cache cleared for all files.");
 				new Notice("Quartz Syncer: Cache cleared for all files.");
 			} else {
-				Logger.warn("Cache is disabled, no action taken.");
+				console.debug("Cache is disabled, no action taken.");
 
 				new Notice(
 					"Quartz Syncer: Cache is disabled, no action taken.",

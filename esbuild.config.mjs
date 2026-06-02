@@ -26,6 +26,7 @@ esbuild.build({
 	sourcemap: prod ? false : 'inline',
 	minify: prod ? true : false,
 	treeShaking: true,
+	drop: prod ? ['console'] : [],
 	outfile: 'main.js',
 	inject: ['./esbuild-buffer-shim.js'],
 	platform: 'browser',

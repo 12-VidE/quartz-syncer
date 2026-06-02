@@ -1,8 +1,5 @@
-import Logger from "js-logger";
 import type { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type { QuartzVersion } from "./QuartzConfigTypes";
-
-const logger = Logger.get("quartz-version-detector");
 
 const QUARTZ_CONFIG_YAML = "quartz.config.yaml";
 const QUARTZ_PLUGINS_JSON = "quartz.plugins.json";
@@ -19,24 +16,24 @@ export class QuartzVersionDetector {
 		repo: RepositoryConnection,
 	): Promise<QuartzVersion> {
 		if (await QuartzVersionDetector.fileExists(repo, QUARTZ_CONFIG_YAML)) {
-			logger.info("Detected Quartz v5 (YAML config)");
+			console.debug("Detected Quartz v5 (YAML config)");
 
 			return "v5-yaml";
 		}
 
 		if (await QuartzVersionDetector.fileExists(repo, QUARTZ_PLUGINS_JSON)) {
-			logger.info("Detected Quartz v5 (legacy JSON config)");
+			console.debug("Detected Quartz v5 (legacy JSON config)");
 
 			return "v5-json";
 		}
 
 		if (await QuartzVersionDetector.fileExists(repo, QUARTZ_CONFIG_TS)) {
-			logger.info("Detected Quartz v4 (TypeScript config)");
+			console.debug("Detected Quartz v4 (TypeScript config)");
 
 			return "v4";
 		}
 
-		logger.info("No Quartz configuration detected");
+		console.debug("No Quartz configuration detected");
 
 		return "unknown";
 	}
@@ -61,7 +58,7 @@ export class QuartzVersionDetector {
 
 			return pkg.version ?? null;
 		} catch (error) {
-			logger.warn("Could not read package.json version", error);
+			console.debug("Could not read package.json version", error);
 
 			return null;
 		}

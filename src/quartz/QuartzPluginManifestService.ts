@@ -1,4 +1,3 @@
-import Logger from "js-logger";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import type {
 	QuartzPluginManifest,
@@ -10,8 +9,6 @@ import {
 	resolveSourceToGitUrl,
 } from "./QuartzPluginUtils";
 import type { GitAuth } from "src/models/settings";
-
-const logger = Logger.get("quartz-plugin-manifest-service");
 
 export class QuartzPluginManifestService {
 	private auth: GitAuth;
@@ -84,7 +81,7 @@ export class QuartzPluginManifestService {
 
 			return null;
 		} catch (error) {
-			logger.debug("Could not fetch plugin manifest", error);
+			console.debug("Could not fetch plugin manifest", error);
 			this.cache.set(cacheKey, null);
 
 			return null;

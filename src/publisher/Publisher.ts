@@ -15,7 +15,6 @@ import { DataStore } from "src/publishFile/DataStore";
 import { AssetSyncer } from "src/compiler/integrations";
 import { ExtendedCacheService } from "src/services/ExtendedCacheService";
 import QuartzSyncer from "main";
-import Logger from "js-logger";
 
 /**
  * MarkedForPublishing interface.
@@ -215,7 +214,7 @@ export default class Publisher {
 
 				blobs.forEach((i) => blobsToPublish.add(i));
 			} catch (e) {
-				Logger.error(e);
+				console.error(e);
 			}
 		}
 

@@ -1,12 +1,9 @@
 import git, { HttpClient } from "isomorphic-git";
 import LightningFS from "@isomorphic-git/lightning-fs";
 import { normalizePath, requestUrl } from "obsidian";
-import Logger from "js-logger";
 import { CompiledPublishFile } from "src/publishFile/PublishFile";
 import { GitAuth, GitRemoteSettings } from "src/models/settings";
 import { removeLeadingSlash } from "src/utils/utils";
-
-const logger = Logger.get("repository-connection");
 
 async function collectBody(
 	body: AsyncIterableIterator<Uint8Array> | undefined,
@@ -72,7 +69,7 @@ const obsidianHttpClient: HttpClient = {
 						: "Error",
 			};
 		} catch (error) {
-			logger.error("HTTP request failed", error);
+			console.error("HTTP request failed", error);
 			throw error;
 		}
 	},
@@ -126,7 +123,7 @@ export class RepositoryConnection {
 				const fsName = this.getFsName();
 				this.fs = new LightningFS(fsName);
 			} catch (error) {
-				logger.error("Failed to initialize LightningFS", error);
+				console.error("Failed to initialize LightningFS", error);
 				throw new Error(
 					"Failed to initialize filesystem. IndexedDB may not be available on this platform.",
 				);
@@ -202,7 +199,7 @@ export class RepositoryConnection {
 
 				const delay = Math.pow(2, attempt) * 1000;
 
-				logger.warn(
+				console.debug(
 					`Push attempt ${
 						attempt + 1
 					} failed, retrying in ${delay}ms...`,
@@ -311,7 +308,7 @@ export class RepositoryConnection {
 		try {
 			await this.getFs().promises.mkdir(path);
 		} catch {
-			logger.debug(`Directory ${path} already exists`);
+			console.debug(`Directory ${path} already exists`);
 		}
 	}
 
@@ -328,7 +325,7 @@ export class RepositoryConnection {
 			return;
 		}
 
-		logger.info(`Cloning repository ${this.getRepositoryName()}`);
+		console.debug(`Cloning repository ${this.getRepositoryName()}`);
 
 		await this.createDirIfNotExists(this.dir);
 
@@ -343,7 +340,7 @@ export class RepositoryConnection {
 			});
 			this.initialized = true;
 		} catch (error) {
-			logger.error("Failed to clone repository", error);
+			console.error("Failed to clone repository", error);
 			throw new Error(
 				`Could not clone repository ${this.getRepositoryName()}: ${String(
 					error,
@@ -413,7 +410,7 @@ export class RepositoryConnection {
 				truncated: false,
 			};
 		} catch (error) {
-			logger.error("Could not get repository content", error);
+			console.error("Could not get repository content", error);
 			throw new Error(
 				`Could not get files from repository ${this.getRepositoryName()}`,
 			);
@@ -480,7 +477,7 @@ export class RepositoryConnection {
 
 			return contents;
 		} catch (error) {
-			logger.error("Could not bulk-read blob contents", error);
+			console.error("Could not bulk-read blob contents", error);
 			throw new Error(
 				`Could not bulk-read blob contents from repository ${this.getRepositoryName()}`,
 			);
@@ -497,7 +494,7 @@ export class RepositoryConnection {
 			this.getVaultPath(this.getRepositoryPath(path)),
 		);
 
-		logger.info(
+		console.debug(
 			`Getting file ${path} from repository ${this.getRepositoryName()}`,
 		);
 
@@ -525,7 +522,7 @@ export class RepositoryConnection {
 				type: "file",
 			};
 		} catch (error) {
-			logger.error(`Could not get file ${path}`, error);
+			console.error(`Could not get file ${path}`, error);
 			throw new Error(
 				`Could not get file ${path} from repository ${this.getRepositoryName()}`,
 			);
@@ -541,7 +538,7 @@ export class RepositoryConnection {
 	): Promise<
 		{ content: string; sha: string; path: string; type: "file" } | undefined
 	> {
-		logger.info(
+		console.debug(
 			`Getting raw file ${path} from repository ${this.getRepositoryName()}`,
 		);
 
@@ -569,7 +566,7 @@ export class RepositoryConnection {
 				type: "file",
 			};
 		} catch (error) {
-			logger.error(`Could not get raw file ${path}`, error);
+			console.error(`Could not get raw file ${path}`, error);
 			throw new Error(
 				`Could not get file ${path} from repository ${this.getRepositoryName()}`,
 			);
@@ -627,7 +624,7 @@ export class RepositoryConnection {
 				type: e.type as "blob" | "tree",
 			}));
 		} catch (error) {
-			logger.debug(`Could not list directory ${dirPath}`, error);
+			console.debug(`Could not list directory ${dirPath}`, error);
 
 			return [];
 		}
@@ -666,7 +663,7 @@ export class RepositoryConnection {
 				},
 			};
 		} catch (error) {
-			logger.error("Could not get latest commit", error);
+			console.error("Could not get latest commit", error);
 
 			return undefined;
 		}
@@ -761,7 +758,7 @@ export class RepositoryConnection {
 			});
 			lockfileBackup = blob;
 		} catch {
-			logger.debug("No quartz.lock.json found, skipping backup");
+			console.debug("No quartz.lock.json found, skipping backup");
 		}
 
 		let result: {
@@ -789,7 +786,7 @@ export class RepositoryConnection {
 				);
 			}
 
-			logger.info("Only quartz.lock.json conflicts, auto-resolving");
+			console.debug("Only quartz.lock.json conflicts, auto-resolving");
 
 			try {
 				await git.merge({
@@ -898,7 +895,7 @@ export class RepositoryConnection {
 			try {
 				await this.getFs().promises.mkdir(currentPath);
 			} catch {
-				logger.debug(`Directory ${currentPath} already exists`);
+				console.debug(`Directory ${currentPath} already exists`);
 			}
 		}
 	}
@@ -982,7 +979,7 @@ export class RepositoryConnection {
 						cache,
 					});
 				} catch (error) {
-					logger.warn(
+					console.debug(
 						`Could not delete file ${normalizedPath}`,
 						error,
 					);
@@ -1011,7 +1008,7 @@ export class RepositoryConnection {
 
 			await this.pushWithRetry();
 		} catch (error) {
-			logger.error("Failed to delete files", error);
+			console.error("Failed to delete files", error);
 			throw error;
 		}
 	}
@@ -1131,7 +1128,7 @@ export class RepositoryConnection {
 
 			await this.pushWithRetry();
 		} catch (error) {
-			logger.error("Failed to update files", error);
+			console.error("Failed to update files", error);
 			throw error;
 		}
 	}
@@ -1180,7 +1177,7 @@ export class RepositoryConnection {
 					cache,
 				});
 			} catch (error) {
-				logger.debug(`Could not delete file ${filepath}`, error);
+				console.debug(`Could not delete file ${filepath}`, error);
 			}
 		}
 	}
@@ -1218,7 +1215,7 @@ export class RepositoryConnection {
 
 			await this.pushWithRetry();
 		} catch (error) {
-			logger.error("Failed to write raw files", error);
+			console.error("Failed to write raw files", error);
 			throw error;
 		}
 	}
@@ -1234,7 +1231,7 @@ export class RepositoryConnection {
 
 			return true;
 		} catch (error) {
-			logger.error("Connection test failed", error);
+			console.error("Connection test failed", error);
 
 			return false;
 		}
@@ -1249,9 +1246,9 @@ export class RepositoryConnection {
 			}
 			this.fs = null;
 			this.initialized = false;
-			logger.info("Local git cache cleared");
+			console.debug("Local git cache cleared");
 		} catch (error) {
-			logger.error("Failed to clear local cache", error);
+			console.error("Failed to clear local cache", error);
 		}
 	}
 
@@ -1301,7 +1298,7 @@ export class RepositoryConnection {
 
 			return head?.oid ?? null;
 		} catch (error) {
-			logger.debug("Failed to fetch remote HEAD commit", error);
+			console.debug("Failed to fetch remote HEAD commit", error);
 
 			return null;
 		}
@@ -1335,7 +1332,7 @@ export class RepositoryConnection {
 
 			return { branches, defaultBranch };
 		} catch (error) {
-			logger.error("Failed to fetch remote branches", error);
+			console.error("Failed to fetch remote branches", error);
 
 			return { branches: [], defaultBranch: null };
 		}

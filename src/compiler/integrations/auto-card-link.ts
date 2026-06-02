@@ -1,5 +1,4 @@
 import { parseYaml, getLinkpath, Notice } from "obsidian";
-import Logger from "js-logger";
 import {
 	PluginIntegration,
 	PatternDescriptor,
@@ -138,7 +137,7 @@ function parseLinkMetadataFromYaml(source: string): LinkMetadata {
 	try {
 		yaml = parseYaml(source) as Partial<LinkMetadata>;
 	} catch (error) {
-		Logger.error(error);
+		console.error(error);
 		throw new YamlParseError(
 			"failed to parse yaml. Check debug console for more detail.",
 		);
@@ -289,9 +288,9 @@ export const AutoCardLinkIntegration: PluginIntegration = {
 							"internal links must be surrounded by quotes.",
 						),
 					);
-					Logger.error(error);
+					console.error(error);
 				} else {
-					Logger.error("Code Block: cardlink unknown error", error);
+					console.error("Code Block: cardlink unknown error", error);
 				}
 
 				return sanitizeHTMLToString(div, serializer);
@@ -299,7 +298,7 @@ export const AutoCardLinkIntegration: PluginIntegration = {
 
 			return sanitizeHTMLToString(div, serializer);
 		} catch (error) {
-			Logger.error(error);
+			console.error(error);
 			new Notice(`Quartz Syncer: Auto Card Link error: ${String(error)}`);
 
 			return match.fullMatch;
