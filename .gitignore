@@ -17,10 +17,6 @@ node_modules
 
 # obsidian
 data.json
-!src/testVault/.obsidian/plugins/obsidian-excalidraw-plugin/data.json
-!src/testVault/.obsidian/plugins/dataview/data.json
-!content/.obsidian/plugins/obsidian-excalidraw-plugin/data.json
-!content/.obsidian/plugins/dataview/data.json
 
 # mac
 .DS_Store
@@ -28,7 +24,6 @@ yarn.lock
 
 .env
 .obsidian-cache
-content/.obsidian
 
 # Documentation
 docs/.obsidian
