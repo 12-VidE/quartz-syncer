@@ -21,6 +21,7 @@ data.json
 # mac
 .DS_Store
 yarn.lock
+bun.lock
 
 .env
 .obsidian-cache
