@@ -2,13 +2,18 @@
 title: Roadmap and Changelog
 description: Changelog and feature roadmap for Quartz Syncer.
 created: 2025-05-16T12:59:31Z+0200
-modified: 2026-06-02T14:46:51Z+0200
+modified: 2026-06-02T16:54:13Z+0200
 publish: true
 ---
 
 ## Upcoming
 
 ## Releases
+
+### Version 1.17.2
+
+- Refactored CLI handlers.
+- Refactored git handlers.
 
 ### Version 1.17.1
 
