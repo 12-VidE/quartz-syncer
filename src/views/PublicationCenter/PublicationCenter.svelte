@@ -292,7 +292,11 @@
 	);
 
 	$effect(() => {
-		publishController?.setProgress(publishProgress);
+		const progress = publishProgress;
+
+		if (publishController) {
+			publishController.setProgress(progress);
+		}
 	});
 
 	/**
