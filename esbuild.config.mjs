@@ -39,7 +39,7 @@ esbuild.build({
 	    typescript: {
 	      compilerOptions: {
 	        module: "esnext",
-	        verbatimModuleSyntax: false,
+	        verbatimModuleSyntax: true,
 	      },
 	    },
 	  }),

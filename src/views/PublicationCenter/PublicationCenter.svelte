@@ -208,77 +208,72 @@
 		return cog;
 	};
 
-	let publishedNotesTree = $derived(
-		publishStatus &&
-			filePathsToTree(
-				publishStatus.publishedNotes.map((note) => note.getVaultPath()),
-				"Unchanged notes" +
-					(publishStatus.publishedNotes.length > 0
-						? ` (${
-								publishStatus.publishedNotes.length === 1
-									? "1 note"
-									: `${publishStatus.publishedNotes.length} notes`
-							})`
-						: ""),
-			),
-	);
+	let publishedNotesTree: TreeNode | undefined = $state(undefined);
+	let changedNotesTree: TreeNode | undefined = $state(undefined);
+	let deletedNoteTree: TreeNode | undefined = $state(undefined);
+	let unpublishedNoteTree: TreeNode | undefined = $state(undefined);
 
-	let changedNotesTree = $derived(
-		publishStatus &&
-			filePathsToTree(
-				publishStatus.changedNotes.map((note) => note.getVaultPath()),
-				"Changed notes" +
-					(publishStatus.changedNotes.length > 0
-						? ` (${
-								publishStatus.changedNotes.length === 1
-									? "1 note"
-									: `${publishStatus.changedNotes.length} notes`
-							})`
-						: ""),
-			),
-	);
+	$effect(() => {
+		if (!publishStatus) return;
 
-	let deletedNoteTree = $derived(
-		publishStatus &&
-			filePathsToTree(
-				[
-					...publishStatus.deletedNotePaths,
-					...publishStatus.deletedBlobPaths,
-				].map((path) => path.path),
-				"Published notes (select to unpublish)" +
-					(publishStatus.changedNotes.length +
-						publishStatus.publishedNotes.length >
-					0
-						? ` (${
-								publishStatus.changedNotes.length +
-									publishStatus.publishedNotes.length ===
-								1
-									? "1 note"
-									: `${
-											publishStatus.changedNotes.length +
-											publishStatus.publishedNotes.length
-										} notes`
-							})`
-						: ""),
-			),
-	);
+		publishedNotesTree = filePathsToTree(
+			publishStatus.publishedNotes.map((note) => note.getVaultPath()),
+			"Unchanged notes" +
+				(publishStatus.publishedNotes.length > 0
+					? ` (${
+							publishStatus.publishedNotes.length === 1
+								? "1 note"
+								: `${publishStatus.publishedNotes.length} notes`
+						})`
+					: ""),
+		);
 
-	let unpublishedNoteTree = $derived(
-		publishStatus &&
-			filePathsToTree(
-				publishStatus.unpublishedNotes.map((note) =>
-					note.getVaultPath(),
-				),
-				"Unpublished notes" +
-					(publishStatus.unpublishedNotes.length > 0
-						? ` (${
-								publishStatus.unpublishedNotes.length === 1
-									? "1 note"
-									: `${publishStatus.unpublishedNotes.length} notes`
-							})`
-						: ""),
-			),
-	);
+		changedNotesTree = filePathsToTree(
+			publishStatus.changedNotes.map((note) => note.getVaultPath()),
+			"Changed notes" +
+				(publishStatus.changedNotes.length > 0
+					? ` (${
+							publishStatus.changedNotes.length === 1
+								? "1 note"
+								: `${publishStatus.changedNotes.length} notes`
+						})`
+					: ""),
+		);
+
+		deletedNoteTree = filePathsToTree(
+			[
+				...publishStatus.deletedNotePaths,
+				...publishStatus.deletedBlobPaths,
+			].map((path) => path.path),
+			"Published notes (select to unpublish)" +
+				(publishStatus.changedNotes.length +
+					publishStatus.publishedNotes.length >
+				0
+					? ` (${
+							publishStatus.changedNotes.length +
+								publishStatus.publishedNotes.length ===
+							1
+								? "1 note"
+								: `${
+										publishStatus.changedNotes.length +
+										publishStatus.publishedNotes.length
+									} notes`
+						})`
+					: ""),
+		);
+
+		unpublishedNoteTree = filePathsToTree(
+			publishStatus.unpublishedNotes.map((note) => note.getVaultPath()),
+			"Unpublished notes" +
+				(publishStatus.unpublishedNotes.length > 0
+					? ` (${
+							publishStatus.unpublishedNotes.length === 1
+								? "1 note"
+								: `${publishStatus.unpublishedNotes.length} notes`
+						})`
+					: ""),
+		);
+	});
 
 	let unpublishedToPublish: Array<CompiledPublishFile> = $state([]);
 	let changedToPublish: Array<CompiledPublishFile> = $state([]);

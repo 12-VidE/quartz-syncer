@@ -1,4 +1,4 @@
-<script lang="ts" context="module">
+<script lang="ts" module>
 	// retain module scoped expansion state for each tree node
 	export const _expansionState: Record<string, boolean> = {
 		/* treeNodeId: expanded <boolean> */
@@ -8,7 +8,7 @@
 <!-- TreeView with checkbox https://svelte.dev/playground/eca6f6392e294247b4f379fde3069274?version=5.34.3 -->
 
 <script lang="ts">
-	import TreeNodeModel from "src/models/TreeNode";
+	import type TreeNodeModel from "src/models/TreeNode";
 	import Icon from "src/ui/Icon.svelte";
 	import TreeNode from "src/ui/TreeView/TreeNode.svelte";
 
@@ -26,9 +26,15 @@
 		onshowdiff?: (_data: { node: TreeNodeModel }) => void;
 	} = $props();
 
-	let { isRoot } = tree;
+	let isRoot = $derived(tree.isRoot);
+	let path = $derived(tree.path);
 
-	let expanded = _expansionState[tree.path] || false;
+	let expanded = $state(false);
+
+	$effect.pre(() => {
+		// Sync initial expansion state when the node path changes.
+		expanded = _expansionState[path] || false;
+	});
 
 	/**
 	 * Toggle the expansion state of the current node.
@@ -36,7 +42,7 @@
 	 * It is called when the user clicks on the node's name or the arrow icon.
 	 */
 	const toggleExpansion = () => {
-		expanded = _expansionState[tree.path] = !expanded;
+		expanded = _expansionState[path] = !expanded;
 	};
 
 	let arrowDown = $derived(expanded);

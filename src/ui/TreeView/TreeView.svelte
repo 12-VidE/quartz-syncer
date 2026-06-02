@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from "svelte";
 	import type TreeNode from "src/models/TreeNode";
 	import Node from "src/ui/TreeView/TreeNode.svelte";
 
@@ -14,24 +15,33 @@
 		showDiff: (_path: string) => void;
 	} = $props();
 
-	const treeMap: Record<string, TreeNode> = {};
+	let treeMap: Record<string, TreeNode> = {};
 
 	/**
 	 * Initialize the treeMap with the parent-child relationships.
 	 * This is used to quickly find the parent of a node when rebuilding the tree.
 	 *
-	 * @param tree - The root node of the tree.
+	 * @param node - The root node of the tree.
 	 */
-	function initTreeMap(tree: TreeNode) {
-		if (tree.children) {
-			for (const child of tree.children) {
-				treeMap[child.path] = tree;
+	function initTreeMap(node: TreeNode) {
+		if (node.children) {
+			for (const child of node.children) {
+				treeMap[child.path] = node;
 				initTreeMap(child);
 			}
 		}
 	}
 
-	initTreeMap(tree);
+	$effect(() => {
+		// Re-run when the tree reference changes (e.g. publishStatus loaded).
+		// Use untrack for the body to avoid infinite loops from in-place mutations.
+		const t = tree;
+		untrack(() => {
+			treeMap = {};
+			initTreeMap(t);
+			rebuildTree({ node: t }, false);
+		});
+	});
 
 	/**
 	 * Rebuild the children of a node based on its checked state.
@@ -89,12 +99,7 @@
 
 			parent = treeMap[parent.path];
 		}
-		// biome-ignore lint/correctness/noSelfAssign: Svelte reactivity trigger
-		tree = tree; // eslint-disable-line no-self-assign -- Svelte reactivity trigger
 	}
-
-	// init the tree state
-	rebuildTree({ node: tree }, false);
 </script>
 
 <div>
