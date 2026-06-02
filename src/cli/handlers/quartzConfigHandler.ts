@@ -1,9 +1,13 @@
 import type QuartzSyncer from "main";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliError, cliSuccess } from "../formatOutput";
-import { validatePreFlight } from "../validators";
 import { flattenObject, getValueByPath, setValueByPath } from "../configUtils";
-import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
+import {
+	checkPreFlight,
+	createConnection,
+	getErrorMessage,
+	parseConfigValue,
+} from "../handlerUtils";
 import { QuartzConfigService } from "src/quartz/QuartzConfigService";
 
 const COMMAND = "quartz-syncer:quartz-config";
@@ -62,21 +66,6 @@ const WRITABLE_KEYS: Record<string, "string" | "boolean"> = {
 
 const FONT_ORIGINS = new Set(["googleFonts", "local"]);
 
-function parseConfigValue(
-	expectedType: "string" | "boolean",
-	rawValue: string,
-): string | boolean | null {
-	if (expectedType === "string") {
-		return rawValue;
-	}
-
-	if (rawValue === "true") return true;
-
-	if (rawValue === "false") return false;
-
-	return null;
-}
-
 export function createQuartzConfigHandler(
 	register: RegisterFn,
 	plugin: QuartzSyncer,
@@ -87,26 +76,16 @@ export function createQuartzConfigHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (validationError) {
-					return formatCliOutput(
-						params,
-						cliError(COMMAND, validationError),
-					);
-				}
+				if (preFlightError) return preFlightError;
 
 				const action =
 					typeof params.action === "string" ? params.action : "list";
 
-				const gitSettings = plugin.getGitSettingsWithSecret();
-
-				const connection = new RepositoryConnection({
-					gitSettings,
-					contentFolder: plugin.settings.contentFolder,
-					vaultPath: plugin.settings.vaultPath,
-				});
-				const configService = new QuartzConfigService(connection);
+				const configService = new QuartzConfigService(
+					createConnection(plugin),
+				);
 
 				if (action === "list") {
 					const config = await configService.readConfig();
@@ -234,10 +213,7 @@ export function createQuartzConfigHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

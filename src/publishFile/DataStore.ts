@@ -138,6 +138,15 @@ export class DataStore {
 		return await this.persister.getItem(key);
 	}
 
+	private async getCacheProperty<K extends keyof QuartzSyncerCache>(
+		path: string,
+		key: K,
+	): Promise<QuartzSyncerCache[K] | null> {
+		const data = await this.getCacheEntry(path);
+
+		return data?.[key] ?? null;
+	}
+
 	/**
 	 * Store a cache entry to IndexedDB and update the in-memory cache if active.
 	 */
@@ -157,6 +166,25 @@ export class DataStore {
 
 		// No memory cache active — write directly to IndexedDB.
 		await this.persister.setItem(key, data);
+	}
+
+	private async mergeAndStore(
+		path: string,
+		updates: Partial<QuartzSyncerCache>,
+		timestamp?: number,
+	): Promise<void> {
+		const existing = await this.getCacheEntry(path);
+
+		await this.setCacheEntry(path, {
+			version: this.version,
+			time: timestamp ?? Date.now(),
+			localData: existing?.localData ?? null,
+			localHash: existing?.localHash ?? undefined,
+			remoteData: existing?.remoteData ?? null,
+			remoteHash: existing?.remoteHash ?? undefined,
+			hasDynamicContent: existing?.hasDynamicContent,
+			...updates,
+		});
 	}
 
 	/**
@@ -286,13 +314,7 @@ export class DataStore {
 	public async loadLocalFile(
 		path: string,
 	): Promise<TCompiledFile | null | undefined> {
-		const data = await this.getCacheEntry(path);
-
-		if (data && data.localData) {
-			return data.localData;
-		}
-
-		return null; // No cached data found
+		return this.getCacheProperty(path, "localData");
 	}
 
 	/**
@@ -304,13 +326,7 @@ export class DataStore {
 	public async loadRemoteFile(
 		path: string,
 	): Promise<TCompiledFile | null | undefined> {
-		const data = await this.getCacheEntry(path);
-
-		if (data && data.remoteData) {
-			return data.remoteData;
-		}
-
-		return null; // No cached data found
+		return this.getCacheProperty(path, "remoteData");
 	}
 
 	/**
@@ -332,16 +348,16 @@ export class DataStore {
 		const localHash =
 			existingData?.localHash ?? (await generateBlobHash(data[0]));
 
-		await this.setCacheEntry(path, {
-			version: this.version,
-			time: timestamp ?? Date.now(),
-			localData: data,
-			localHash,
-			remoteData: existingData?.remoteData ?? null, // Preserve remote data if it exists
-			remoteHash: existingData?.remoteHash, // Preserve remote hash if it exists
-			hasDynamicContent:
-				hasDynamicContent ?? existingData?.hasDynamicContent,
-		});
+		await this.mergeAndStore(
+			path,
+			{
+				localData: data,
+				localHash,
+				hasDynamicContent:
+					hasDynamicContent ?? existingData?.hasDynamicContent,
+			},
+			timestamp,
+		);
 	}
 
 	/**
@@ -356,17 +372,13 @@ export class DataStore {
 		timestamp: number,
 		data: TCompiledFile,
 	): Promise<void> {
-		const existingData = await this.getCacheEntry(path);
-
-		await this.setCacheEntry(path, {
-			version: this.version,
-			time: timestamp ?? Date.now(),
-			localData: existingData?.localData ?? null, // Preserve local data if it exists
-			localHash: existingData?.localHash, // Preserve local hash if it exists
-			remoteData: data,
-			remoteHash: existingData?.remoteHash, // Preserve remote hash if it exists
-			hasDynamicContent: existingData?.hasDynamicContent, // Preserve dynamic content flag
-		});
+		await this.mergeAndStore(
+			path,
+			{
+				remoteData: data,
+			},
+			timestamp,
+		);
 	}
 
 	/**
@@ -378,13 +390,7 @@ export class DataStore {
 	public async loadLocalHash(
 		path: string,
 	): Promise<string | null | undefined> {
-		const data = await this.getCacheEntry(path);
-
-		if (data && data.localHash) {
-			return data.localHash;
-		}
-
-		return null; // No cached data found
+		return this.getCacheProperty(path, "localHash");
 	}
 
 	/**
@@ -396,13 +402,7 @@ export class DataStore {
 	public async loadRemoteHash(
 		path: string,
 	): Promise<string | null | undefined> {
-		const data = await this.getCacheEntry(path);
-
-		if (data && data.remoteHash) {
-			return data.remoteHash;
-		}
-
-		return null; // No cached data found
+		return this.getCacheProperty(path, "remoteHash");
 	}
 
 	/**
@@ -417,17 +417,13 @@ export class DataStore {
 		timestamp: number,
 		hash: string,
 	): Promise<void> {
-		const existingData = await this.getCacheEntry(path);
-
-		await this.setCacheEntry(path, {
-			version: this.version,
-			time: timestamp ?? Date.now(),
-			localData: existingData?.localData ?? null, // Preserve local data if it exists
-			localHash: hash,
-			remoteData: existingData?.remoteData ?? null, // Preserve remote data if it exists
-			remoteHash: existingData?.remoteHash, // Preserve remote hash if it exists
-			hasDynamicContent: existingData?.hasDynamicContent, // Preserve dynamic content flag
-		});
+		await this.mergeAndStore(
+			path,
+			{
+				localHash: hash,
+			},
+			timestamp,
+		);
 	}
 
 	/**
@@ -443,17 +439,13 @@ export class DataStore {
 		timestamp: number,
 		hash: string,
 	): Promise<void> {
-		const existingData = await this.getCacheEntry(path);
-
-		await this.setCacheEntry(path, {
-			version: this.version,
-			time: timestamp ?? Date.now(),
-			localData: existingData?.localData ?? null, // Preserve local data if it exists
-			localHash: existingData?.localHash, // Preserve local hash if it exists
-			remoteData: existingData?.remoteData ?? null, // Preserve remote data if it exists
-			remoteHash: hash,
-			hasDynamicContent: existingData?.hasDynamicContent, // Preserve dynamic content flag
-		});
+		await this.mergeAndStore(
+			path,
+			{
+				remoteHash: hash,
+			},
+			timestamp,
+		);
 	}
 
 	/**
@@ -481,9 +473,7 @@ export class DataStore {
 	public async loadFile(
 		path: string,
 	): Promise<QuartzSyncerCache | null | undefined> {
-		return this.getCacheEntry(path).then((raw) => {
-			return raw;
-		});
+		return this.getCacheEntry(path);
 	}
 
 	/**

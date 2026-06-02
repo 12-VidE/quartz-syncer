@@ -5,7 +5,11 @@ import {
 } from "src/publishFile/Validator";
 import QuartzSyncerSettings from "src/models/settings";
 import { SyncerPageCompiler } from "src/compiler/SyncerPageCompiler";
-import { CompiledPublishFile, PublishFile } from "src/publishFile/PublishFile";
+import {
+	CompiledPublishFile,
+	getSpecialFileType,
+	PublishFile,
+} from "src/publishFile/PublishFile";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import { DataStore } from "src/publishFile/DataStore";
 import { AssetSyncer } from "src/compiler/integrations";
@@ -71,19 +75,10 @@ export default class Publisher {
 	 * @returns true if the file should be published, false otherwise.
 	 */
 	shouldPublish(file: TFile): boolean {
-		if (file.extension === "base") {
-			return this.settings.useBases;
-		}
+		const specialType = getSpecialFileType(file);
 
-		if (file.extension === "canvas") {
-			return this.settings.useCanvas;
-		}
-
-		if (
-			file.path.endsWith(".excalidraw") ||
-			file.path.endsWith(".excalidraw.md")
-		) {
-			return this.settings.useExcalidraw;
+		if (specialType) {
+			return this.isSpecialTypeEnabled(specialType);
 		}
 
 		const frontMatter = this.metadataCache.getCache(file.path)?.frontmatter;
@@ -103,17 +98,16 @@ export default class Publisher {
 	async getFilesMarkedForPublishing(): Promise<MarkedForPublishing> {
 		const vaultIsRoot = this.settings.vaultPath === "/";
 
+		const isInVault = (path: string): boolean =>
+			vaultIsRoot || path.startsWith(this.settings.vaultPath);
+
 		let markdownPaths: Set<string>;
 
 		if (this.settings.allNotesPublishableByDefault) {
 			markdownPaths = new Set(
 				this.vault
 					.getMarkdownFiles()
-					.filter(
-						(f) =>
-							vaultIsRoot ||
-							f.path.startsWith(this.settings.vaultPath),
-					)
+					.filter((f) => isInVault(f.path))
 					.map((f) => f.path),
 			);
 		} else if (this.extendedCache.isReady) {
@@ -125,6 +119,8 @@ export default class Publisher {
 			markdownPaths = new Set<string>();
 
 			for (const path of candidates) {
+				if (!isInVault(path)) continue;
+
 				const fm = this.metadataCache.getCache(path)?.frontmatter;
 
 				if (fm?.[this.settings.publishFrontmatterKey]) {
@@ -136,10 +132,7 @@ export default class Publisher {
 				this.vault
 					.getMarkdownFiles()
 					.filter((f) => {
-						if (
-							!vaultIsRoot &&
-							!f.path.startsWith(this.settings.vaultPath)
-						) {
+						if (!isInVault(f.path)) {
 							return false;
 						}
 
@@ -157,35 +150,24 @@ export default class Publisher {
 			);
 		}
 
-		const filteredPaths = vaultIsRoot
-			? markdownPaths
-			: new Set(
-					[...markdownPaths].filter((p) =>
-						p.startsWith(this.settings.vaultPath),
-					),
-				);
+		// Collect base and canvas files in a single vault pass
+		const baseFiles: TFile[] = [];
+		const canvasFiles: TFile[] = [];
 
-		const baseFiles = this.settings.useBases
-			? this.vault
-					.getFiles()
-					.filter(
-						(f) =>
-							f.extension === "base" &&
-							(vaultIsRoot ||
-								f.path.startsWith(this.settings.vaultPath)),
-					)
-			: [];
+		if (this.settings.useBases || this.settings.useCanvas) {
+			for (const f of this.vault.getFiles()) {
+				if (!isInVault(f.path)) continue;
 
-		const canvasFiles = this.settings.useCanvas
-			? this.vault
-					.getFiles()
-					.filter(
-						(f) =>
-							f.extension === "canvas" &&
-							(vaultIsRoot ||
-								f.path.startsWith(this.settings.vaultPath)),
-					)
-			: [];
+				if (this.settings.useBases && f.extension === "base") {
+					baseFiles.push(f);
+				} else if (
+					this.settings.useCanvas &&
+					f.extension === "canvas"
+				) {
+					canvasFiles.push(f);
+				}
+			}
+		}
 
 		const excalidrawFiles = this.settings.useExcalidraw
 			? this.vault
@@ -194,16 +176,15 @@ export default class Publisher {
 						(f) =>
 							(f.path.endsWith(".excalidraw") ||
 								f.path.endsWith(".excalidraw.md")) &&
-							(vaultIsRoot ||
-								f.path.startsWith(this.settings.vaultPath)),
+							isInVault(f.path),
 					)
 			: [];
 
 		for (const f of excalidrawFiles) {
-			filteredPaths.delete(f.path);
+			markdownPaths.delete(f.path);
 		}
 
-		const mdFiles = [...filteredPaths]
+		const mdFiles = [...markdownPaths]
 			.map((p) => this.vault.getFileByPath(p))
 			.filter((f): f is TFile => f !== null);
 
@@ -297,19 +278,10 @@ export default class Publisher {
 		onProgress?: (completed: number, total: number) => void | Promise<void>,
 	): Promise<boolean> {
 		const filesToPublish = files.filter((f) => {
-			if (f.file.extension === "base") {
-				return this.settings.useBases;
-			}
+			const specialType = getSpecialFileType(f.file);
 
-			if (f.file.extension === "canvas") {
-				return this.settings.useCanvas;
-			}
-
-			if (
-				f.file.path.endsWith(".excalidraw") ||
-				f.file.path.endsWith(".excalidraw.md")
-			) {
-				return this.settings.useExcalidraw;
+			if (specialType) {
+				return this.isSpecialTypeEnabled(specialType);
 			}
 
 			return isPublishFrontmatterValid(
@@ -357,6 +329,19 @@ export default class Publisher {
 			console.error(error);
 
 			return false;
+		}
+	}
+
+	private isSpecialTypeEnabled(
+		type: "base" | "canvas" | "excalidraw",
+	): boolean {
+		switch (type) {
+			case "base":
+				return this.settings.useBases;
+			case "canvas":
+				return this.settings.useCanvas;
+			case "excalidraw":
+				return this.settings.useExcalidraw;
 		}
 	}
 }

@@ -148,22 +148,12 @@ export class SyncerPageCompiler {
 
 	async generateMarkdown(file: PublishFile): Promise<TCompiledFile> {
 		const vaultFileText = await file.cachedRead();
-
-		if (file.getType() === "base") {
-			const blobs = await this.resolveEmbeddedAssets(file);
-
-			return [vaultFileText, { blobs }];
-		}
-
-		if (file.getType() === "canvas") {
-			const blobs = await this.resolveEmbeddedAssets(file);
-
-			return [vaultFileText, { blobs }];
-		}
+		const fileType = file.getType();
 
 		if (
-			file.file.name.endsWith(".excalidraw") ||
-			file.file.name.endsWith(".excalidraw.md")
+			fileType === "base" ||
+			fileType === "canvas" ||
+			fileType === "excalidraw"
 		) {
 			const blobs = await this.resolveEmbeddedAssets(file);
 

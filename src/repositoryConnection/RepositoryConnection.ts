@@ -4,6 +4,7 @@ import { normalizePath, requestUrl } from "obsidian";
 import Logger from "js-logger";
 import { CompiledPublishFile } from "src/publishFile/PublishFile";
 import { GitAuth, GitRemoteSettings } from "src/models/settings";
+import { removeLeadingSlash } from "src/utils/utils";
 
 const logger = Logger.get("repository-connection");
 
@@ -90,6 +91,11 @@ interface TreeEntry {
 }
 
 export class RepositoryConnection {
+	private static readonly COMMIT_AUTHOR = {
+		name: "Quartz Syncer",
+		email: "268450573+quartz-syncer-publisher[bot]@users.noreply.github.com",
+	} as const;
+
 	private remoteUrl: string;
 	private branch: string;
 	private corsProxyUrl: string | undefined;
@@ -249,9 +255,7 @@ export class RepositoryConnection {
 			? path.replace(this.contentFolder, "")
 			: path;
 
-		return repositoryPath.startsWith("/")
-			? repositoryPath.slice(1)
-			: repositoryPath;
+		return removeLeadingSlash(repositoryPath);
 	}
 
 	getVaultPath(path: string): string {
@@ -261,7 +265,7 @@ export class RepositoryConnection {
 			? path.replace(this.vaultPath, "")
 			: path;
 
-		return vaultPath.startsWith("/") ? vaultPath.slice(1) : vaultPath;
+		return removeLeadingSlash(vaultPath);
 	}
 
 	setRepositoryPath(path: string): string {
@@ -271,9 +275,7 @@ export class RepositoryConnection {
 			? path
 			: `${this.contentFolder}/${path}`;
 
-		return repositoryPath.startsWith("/")
-			? repositoryPath.slice(1)
-			: repositoryPath;
+		return removeLeadingSlash(repositoryPath);
 	}
 
 	setVaultPath(path: string): string {
@@ -283,7 +285,7 @@ export class RepositoryConnection {
 			? path
 			: `${this.vaultPath}${separator}${path}`;
 
-		return vaultPath.startsWith("/") ? vaultPath.slice(1) : vaultPath;
+		return removeLeadingSlash(vaultPath);
 	}
 
 	repositoryToVaultPath(path: string): string {
@@ -715,23 +717,7 @@ export class RepositoryConnection {
 			ref: `origin/${this.branch}`,
 		});
 
-		await git.checkout({
-			...this.getGitConfig(),
-			ref: remoteCommit,
-			force: true,
-		});
-
-		await git.branch({
-			...this.getGitConfig(),
-			ref: this.branch,
-			object: remoteCommit,
-			force: true,
-		});
-
-		await git.checkout({
-			...this.getGitConfig(),
-			ref: this.branch,
-		});
+		await this.resetToRemoteCommit(remoteCommit);
 
 		const remoteName = "upstream";
 
@@ -763,10 +749,7 @@ export class RepositoryConnection {
 		const mergeRef = `remotes/${remoteName}/${upstreamBranch}`;
 		const lockfilePath = "quartz.lock.json";
 
-		const mergeAuthor = {
-			name: "Quartz Syncer",
-			email: "268450573+quartz-syncer-publisher[bot]@users.noreply.github.com",
-		};
+		const mergeAuthor = RepositoryConnection.COMMIT_AUTHOR;
 
 		let lockfileBackup: Uint8Array | null = null;
 
@@ -795,19 +778,10 @@ export class RepositoryConnection {
 				author: mergeAuthor,
 			});
 		} catch (mergeError) {
-			const conflictFiles = this.extractConflictFiles(mergeError);
-
-			if (!conflictFiles) throw mergeError;
-
-			const nonLockfileConflicts = conflictFiles.filter(
-				(f: string) => f !== lockfilePath,
+			const conflictFiles = this.throwIfNonLockfileConflicts(
+				mergeError,
+				lockfilePath,
 			);
-
-			if (nonLockfileConflicts.length > 0) {
-				throw new Error(
-					`Merge conflicts in: ${conflictFiles.join(", ")}`,
-				);
-			}
 
 			if (!lockfileBackup) {
 				throw new Error(
@@ -826,19 +800,7 @@ export class RepositoryConnection {
 					author: mergeAuthor,
 				});
 			} catch (retryError) {
-				const retryConflicts = this.extractConflictFiles(retryError);
-
-				if (!retryConflicts) throw retryError;
-
-				const retryNonLockfile = retryConflicts.filter(
-					(f: string) => f !== lockfilePath,
-				);
-
-				if (retryNonLockfile.length > 0) {
-					throw new Error(
-						`Merge conflicts in: ${retryConflicts.join(", ")}`,
-					);
-				}
+				this.throwIfNonLockfileConflicts(retryError, lockfilePath);
 			}
 
 			const fullLockfilePath = `${this.dir}/${lockfilePath}`;
@@ -909,6 +871,77 @@ export class RepositoryConnection {
 		return null;
 	}
 
+	private normalizeFilePath(path: string): string {
+		let previous;
+
+		do {
+			previous = path;
+			path = path.replace(/\.\.\//g, "");
+		} while (path !== previous);
+
+		path = this.getVaultPath(path);
+
+		return path.startsWith("/")
+			? `${this.contentFolder}${path}`
+			: `${this.contentFolder}/${path}`;
+	}
+
+	private async ensureDirectory(filePath: string): Promise<void> {
+		const parts = filePath.split("/");
+		parts.pop();
+		let currentPath = this.dir;
+
+		for (const part of parts) {
+			if (!part) continue;
+			currentPath = `${currentPath}/${part}`;
+
+			try {
+				await this.getFs().promises.mkdir(currentPath);
+			} catch {
+				logger.debug(`Directory ${currentPath} already exists`);
+			}
+		}
+	}
+
+	private async resetToRemoteCommit(remoteCommit: string): Promise<void> {
+		await git.checkout({
+			...this.getGitConfig(),
+			ref: remoteCommit,
+			force: true,
+		});
+
+		await git.branch({
+			...this.getGitConfig(),
+			ref: this.branch,
+			object: remoteCommit,
+			force: true,
+		});
+
+		await git.checkout({
+			...this.getGitConfig(),
+			ref: this.branch,
+		});
+	}
+
+	private throwIfNonLockfileConflicts(
+		error: unknown,
+		lockfilePath: string,
+	): string[] {
+		const conflictFiles = this.extractConflictFiles(error);
+
+		if (!conflictFiles) throw error;
+
+		const nonLockfileConflicts = conflictFiles.filter(
+			(f: string) => f !== lockfilePath,
+		);
+
+		if (nonLockfileConflicts.length > 0) {
+			throw new Error(`Merge conflicts in: ${conflictFiles.join(", ")}`);
+		}
+
+		return conflictFiles;
+	}
+
 	async deleteFiles(
 		filePaths: string[],
 		onProgress?: (completed: number, total: number) => void | Promise<void>,
@@ -925,50 +958,19 @@ export class RepositoryConnection {
 				singleBranch: true,
 			});
 
-			const normalizeFilePath = (path: string): string => {
-				let previous;
-
-				do {
-					previous = path;
-					path = path.replace(/\.\.\//g, "");
-				} while (path !== previous);
-
-				path = this.getVaultPath(path);
-
-				return path.startsWith("/")
-					? `${this.contentFolder}${path}`
-					: `${this.contentFolder}/${path}`;
-			};
-
 			const remoteCommit = await git.resolveRef({
 				...this.getGitConfig(),
 				ref: `origin/${this.branch}`,
 			});
 
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: remoteCommit,
-				force: true,
-			});
-
-			await git.branch({
-				...this.getGitConfig(),
-				ref: this.branch,
-				object: remoteCommit,
-				force: true,
-			});
-
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: this.branch,
-			});
+			await this.resetToRemoteCommit(remoteCommit);
 
 			// Shared cache avoids re-reading the git index from disk on every git.remove() call.
 			// Without this, each call reads + writes the full index = O(n) disk I/O per file.
 			const cache = {};
 
 			for (let i = 0; i < filePaths.length; i++) {
-				const normalizedPath = normalizeFilePath(filePaths[i]);
+				const normalizedPath = this.normalizeFilePath(filePaths[i]);
 				const fullPath = `${this.dir}/${normalizedPath}`;
 
 				try {
@@ -1003,10 +1005,7 @@ export class RepositoryConnection {
 				message: `Deleted ${filePaths.length} file${
 					filePaths.length === 1 ? "" : "s"
 				}`,
-				author: {
-					name: "Quartz Syncer",
-					email: "268450573+quartz-syncer-publisher[bot]@users.noreply.github.com",
-				},
+				author: RepositoryConnection.COMMIT_AUTHOR,
 				cache,
 			});
 
@@ -1046,55 +1045,7 @@ export class RepositoryConnection {
 				ref: `origin/${this.branch}`,
 			});
 
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: remoteCommit,
-				force: true,
-			});
-
-			await git.branch({
-				...this.getGitConfig(),
-				ref: this.branch,
-				object: remoteCommit,
-				force: true,
-			});
-
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: this.branch,
-			});
-
-			const normalizeFilePath = (path: string): string => {
-				let previous;
-
-				do {
-					previous = path;
-					path = path.replace(/\.\.\//g, "");
-				} while (path !== previous);
-
-				path = this.getVaultPath(path);
-
-				return path.startsWith("/")
-					? `${this.contentFolder}${path}`
-					: `${this.contentFolder}/${path}`;
-			};
-
-			const ensureDirectory = async (filePath: string): Promise<void> => {
-				const parts = filePath.split("/");
-				parts.pop();
-				let currentPath = this.dir;
-
-				for (const part of parts) {
-					if (!part) continue;
-					currentPath = `${currentPath}/${part}`;
-
-					try {
-						await this.getFs().promises.mkdir(currentPath);
-					} catch {
-						logger.debug(`Directory ${currentPath} already exists`);
-					}
-				}
-			};
+			await this.resetToRemoteCommit(remoteCommit);
 
 			// Shared cache avoids re-reading the git index from disk on every git.add() call.
 			const cache = {};
@@ -1106,18 +1057,18 @@ export class RepositoryConnection {
 
 			for (const file of files) {
 				const [text, metadata] = file.compiledFile;
-				const normalizedPath = normalizeFilePath(file.getPath());
+				const normalizedPath = this.normalizeFilePath(file.getPath());
 				const fullPath = `${this.dir}/${normalizedPath}`;
 
-				await ensureDirectory(normalizedPath);
+				await this.ensureDirectory(normalizedPath);
 				await this.getFs().promises.writeFile(fullPath, text);
 				allFilepathsToStage.push(normalizedPath);
 
 				for (const asset of metadata.blobs) {
-					const assetPath = normalizeFilePath(asset.path);
+					const assetPath = this.normalizeFilePath(asset.path);
 					const assetFullPath = `${this.dir}/${assetPath}`;
 
-					await ensureDirectory(assetPath);
+					await this.ensureDirectory(assetPath);
 
 					const binaryContent = Uint8Array.from(
 						atob(asset.content),
@@ -1174,10 +1125,7 @@ export class RepositoryConnection {
 				message: `Published ${files.length} file${
 					files.length === 1 ? "" : "s"
 				}`,
-				author: {
-					name: "Quartz Syncer",
-					email: "268450573+quartz-syncer-publisher[bot]@users.noreply.github.com",
-				},
+				author: RepositoryConnection.COMMIT_AUTHOR,
 				cache,
 			});
 
@@ -1194,30 +1142,13 @@ export class RepositoryConnection {
 	): Promise<void> {
 		if (files.size === 0) return;
 
-		const ensureDirectory = async (filePath: string): Promise<void> => {
-			const parts = filePath.split("/");
-			parts.pop();
-			let currentPath = this.dir;
-
-			for (const part of parts) {
-				if (!part) continue;
-				currentPath = `${currentPath}/${part}`;
-
-				try {
-					await this.getFs().promises.mkdir(currentPath);
-				} catch {
-					logger.debug(`Directory ${currentPath} already exists`);
-				}
-			}
-		};
-
 		// Write all files to disk first, then batch-stage with a single git.add() call.
 		const filepaths: string[] = [];
 
 		for (const [filepath, content] of files) {
 			const fullPath = `${this.dir}/${filepath}`;
 
-			await ensureDirectory(filepath);
+			await this.ensureDirectory(filepath);
 			await this.getFs().promises.writeFile(fullPath, content);
 			filepaths.push(filepath);
 		}
@@ -1275,33 +1206,14 @@ export class RepositoryConnection {
 				ref: `origin/${this.branch}`,
 			});
 
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: remoteCommit,
-				force: true,
-			});
-
-			await git.branch({
-				...this.getGitConfig(),
-				ref: this.branch,
-				object: remoteCommit,
-				force: true,
-			});
-
-			await git.checkout({
-				...this.getGitConfig(),
-				ref: this.branch,
-			});
+			await this.resetToRemoteCommit(remoteCommit);
 
 			await this.stageRawFiles(files);
 
 			await git.commit({
 				...this.getGitConfig(),
 				message: commitMessage,
-				author: {
-					name: "Quartz Syncer",
-					email: "268450573+quartz-syncer-publisher[bot]@users.noreply.github.com",
-				},
+				author: RepositoryConnection.COMMIT_AUTHOR,
 			});
 
 			await this.pushWithRetry();

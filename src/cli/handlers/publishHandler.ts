@@ -1,11 +1,14 @@
 import type QuartzSyncer from "main";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
-import { validatePreFlight } from "../validators";
-import { CliProgressController } from "../cliProgressController";
-import Publisher from "src/publisher/Publisher";
-import PublishStatusManager from "src/publisher/PublishStatusManager";
-import QuartzSyncerSiteManager from "src/repositoryConnection/QuartzSyncerSiteManager";
+import {
+	buildVerboseMessage,
+	checkPreFlight,
+	getErrorMessage,
+	initPublishStatus,
+	parseVerboseFlags,
+	pluralize,
+} from "../handlerUtils";
 
 const COMMAND = "quartz-syncer:publish";
 
@@ -29,42 +32,15 @@ export function createPublishHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (validationError) {
-					return formatCliOutput(
-						params,
-						cliError(COMMAND, validationError),
-					);
-				}
+				if (preFlightError) return preFlightError;
 
 				const startTime = Date.now();
 				const dryRun = params["dry-run"] === "true";
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
-				const siteManager = new QuartzSyncerSiteManager(
-					plugin.app.metadataCache,
-					plugin.settings,
-					plugin.getGitSettingsWithSecret(),
-				);
-
-				const publisher = new Publisher(
-					plugin.app,
-					plugin,
-					plugin.app.vault,
-					plugin.app.metadataCache,
-					plugin.settings,
-					plugin.datastore,
-					plugin.extendedCache,
-				);
-
-				const statusManager = new PublishStatusManager(
-					siteManager,
-					publisher,
-				);
-				const controller = new CliProgressController();
-				const status = await statusManager.getPublishStatus(controller);
+				const { publisher, status } = await initPublishStatus(plugin);
 
 				const filesToPublish = [
 					...status.unpublishedNotes,
@@ -78,31 +54,20 @@ export function createPublishHandler(
 					},
 				};
 
-				const buildVerboseMessage = (
-					published: string[],
-					fallback: string,
-				): string => {
-					if (!includeVerbose) {
-						return fallback;
-					}
-
-					if (published.length === 0) {
-						return fallback;
-					}
-
-					return [
-						`Published ${published.length} file${
-							published.length === 1 ? "" : "s"
-						}:`,
-						...published.map((path) => `\t${path}`),
-					].join("\n");
-				};
-
 				if (dryRun) {
 					const baseMessage = `Dry run: ${filesToPublish.length} to publish.`;
 
 					const message = buildVerboseMessage(
-						data.publish,
+						includeVerbose,
+						[
+							{
+								label: `Published ${filesToPublish.length} ${pluralize(
+									filesToPublish.length,
+									"file",
+								)}:`,
+								items: data.publish,
+							},
+						],
 						baseMessage,
 					);
 
@@ -122,7 +87,16 @@ export function createPublishHandler(
 						params,
 						cliSuccess(
 							COMMAND,
-							buildVerboseMessage([], "Nothing to publish."),
+							buildVerboseMessage(
+								includeVerbose,
+								[
+									{
+										label: `Published 0 ${pluralize(0, "file")}:`,
+										items: [],
+									},
+								],
+								"Nothing to publish.",
+							),
 							data,
 							Date.now() - startTime,
 						),
@@ -140,10 +114,24 @@ export function createPublishHandler(
 					throw new Error("Failed to publish files.");
 				}
 
-				const baseMessage = `Published ${filesToPublish.length} file${
-					filesToPublish.length === 1 ? "" : "s"
-				}.`;
-				const message = buildVerboseMessage(data.publish, baseMessage);
+				const baseMessage = `Published ${filesToPublish.length} ${pluralize(
+					filesToPublish.length,
+					"file",
+				)}.`;
+
+				const message = buildVerboseMessage(
+					includeVerbose,
+					[
+						{
+							label: `Published ${filesToPublish.length} ${pluralize(
+								filesToPublish.length,
+								"file",
+							)}:`,
+							items: data.publish,
+						},
+					],
+					baseMessage,
+				);
 
 				return formatCliOutput(
 					params,
@@ -152,10 +140,7 @@ export function createPublishHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

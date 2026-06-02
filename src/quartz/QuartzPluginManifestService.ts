@@ -5,54 +5,14 @@ import type {
 	QuartzPluginManifest,
 	QuartzPluginSource,
 } from "./QuartzConfigTypes";
+import {
+	getSourceRef,
+	isObjectSource,
+	resolveSourceToGitUrl,
+} from "./QuartzPluginUtils";
 import type { GitAuth } from "src/models/settings";
 
 const logger = Logger.get("quartz-plugin-manifest-service");
-
-function resolveSourceToUrl(
-	source: QuartzPluginSource,
-): { url: string; subdir?: string } | null {
-	if (typeof source === "string") {
-		if (source.startsWith("github:")) {
-			const repoPath = source.replace("github:", "").split("#")[0];
-
-			return { url: `https://github.com/${repoPath}.git` };
-		}
-
-		if (source.startsWith("git+https://")) {
-			return { url: source.replace("git+", "").split("#")[0] };
-		}
-
-		if (source.startsWith("https://")) {
-			return { url: source.split("#")[0] };
-		}
-
-		return null;
-	}
-
-	const obj = source;
-
-	if (obj.repo.startsWith("github:")) {
-		const repoPath = obj.repo.replace("github:", "").split("#")[0];
-
-		return {
-			url: `https://github.com/${repoPath}.git`,
-			subdir: obj.subdir,
-		};
-	}
-
-	return { url: obj.repo.split("#")[0], subdir: obj.subdir };
-}
-
-function resolveRef(source: QuartzPluginSource): string | undefined {
-	if (typeof source === "string") {
-		const hashIndex = source.indexOf("#");
-
-		return hashIndex >= 0 ? source.slice(hashIndex + 1) : undefined;
-	}
-
-	return source.ref;
-}
 
 export class QuartzPluginManifestService {
 	private auth: GitAuth;
@@ -74,21 +34,16 @@ export class QuartzPluginManifestService {
 			return this.cache.get(cacheKey) ?? null;
 		}
 
-		const resolved = resolveSourceToUrl(source);
-
-		if (!resolved) {
-			this.cache.set(cacheKey, null);
-
-			return null;
-		}
+		const url = resolveSourceToGitUrl(source);
+		const subdir = isObjectSource(source) ? source.subdir : undefined;
 
 		try {
-			let ref = resolveRef(source);
+			let ref = getSourceRef(source);
 
 			if (!ref) {
 				const { defaultBranch } =
 					await RepositoryConnection.fetchRemoteBranches(
-						resolved.url,
+						url,
 						this.auth,
 						this.corsProxyUrl,
 					);
@@ -96,9 +51,10 @@ export class QuartzPluginManifestService {
 			}
 
 			const manifest = await this.fetchManifestFromRef(
-				resolved,
+				url,
 				ref,
 				cacheKey,
+				subdir,
 			);
 
 			if (manifest !== undefined) {
@@ -107,16 +63,17 @@ export class QuartzPluginManifestService {
 
 			const { defaultBranch } =
 				await RepositoryConnection.fetchRemoteBranches(
-					resolved.url,
+					url,
 					this.auth,
 					this.corsProxyUrl,
 				);
 
 			if (defaultBranch && defaultBranch !== ref) {
 				const fallback = await this.fetchManifestFromRef(
-					resolved,
+					url,
 					defaultBranch,
 					cacheKey,
+					subdir,
 				);
 
 				if (fallback !== undefined) {
@@ -136,14 +93,15 @@ export class QuartzPluginManifestService {
 	}
 
 	private async fetchManifestFromRef(
-		resolved: { url: string; subdir?: string },
+		url: string,
 		ref: string,
 		cacheKey: string,
+		subdir?: string,
 	): Promise<QuartzPluginManifest | null | undefined> {
 		try {
 			const repo = new RepositoryConnection({
 				gitSettings: {
-					remoteUrl: resolved.url,
+					remoteUrl: url,
 					branch: ref,
 					auth: this.auth,
 					corsProxyUrl: this.corsProxyUrl,
@@ -152,8 +110,8 @@ export class QuartzPluginManifestService {
 				vaultPath: "/",
 			});
 
-			const packageJsonPath = resolved.subdir
-				? `${resolved.subdir}/package.json`
+			const packageJsonPath = subdir
+				? `${subdir}/package.json`
 				: "package.json";
 
 			const file = await repo.getRawFile(packageJsonPath);

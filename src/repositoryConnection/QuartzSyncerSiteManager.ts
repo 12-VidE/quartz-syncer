@@ -9,6 +9,7 @@ import {
 import type { QuartzVersion } from "src/quartz/QuartzConfigTypes";
 import { QuartzVersionDetector } from "src/quartz/QuartzVersionDetector";
 import { QuartzConfigService } from "src/quartz/QuartzConfigService";
+import { removeLeadingSlash } from "src/utils/utils";
 
 export interface PathRewriteRule {
 	from: string;
@@ -16,12 +17,6 @@ export interface PathRewriteRule {
 }
 
 export type VaultPathRule = PathRewriteRule;
-
-type ContentTreeItem = {
-	path: string;
-	oid: string;
-	type: "blob" | "tree" | "commit";
-};
 
 export default class QuartzSyncerSiteManager {
 	settings: QuartzSyncerSettings;
@@ -63,9 +58,7 @@ export default class QuartzSyncerSiteManager {
 	 * @returns A promise that resolves to the note content as a string.
 	 */
 	async getNoteContent(path: string): Promise<string> {
-		if (path.startsWith("/")) {
-			path = path.substring(1);
-		}
+		path = removeLeadingSlash(path);
 
 		const response = await this.userSyncerConnection.getFile(
 			`${this.settings.contentFolder}/${path}`,
@@ -97,10 +90,7 @@ export default class QuartzSyncerSiteManager {
 
 		for (const [fullPath, content] of rawContents) {
 			let vaultPath = fullPath.replace(prefix, "");
-
-			if (vaultPath.startsWith("/")) {
-				vaultPath = vaultPath.substring(1);
-			}
+			vaultPath = removeLeadingSlash(vaultPath);
 			vaultContents.set(vaultPath, content);
 		}
 
@@ -113,38 +103,46 @@ export default class QuartzSyncerSiteManager {
 	 * @param contentTree - The repository content tree.
 	 * @returns A promise that resolves to a record mapping note paths to their hashes.
 	 */
-	async getNoteHashes(
+	private extractHashesFromTree(
 		contentTree: NonNullable<TRepositoryContent>,
-	): Promise<Record<string, string>> {
-		const files = contentTree.tree;
-
-		const isPublishableFile = (path: string): boolean =>
-			path.endsWith(".md") ||
-			(this.settings.useBases && path.endsWith(".base")) ||
-			(this.settings.useCanvas && path.endsWith(".canvas"));
-
-		const notes = files.filter(
-			(x): x is ContentTreeItem =>
-				typeof x.path === "string" &&
-				x.path.startsWith(this.settings.contentFolder) &&
-				x.type === "blob" &&
-				isPublishableFile(x.path),
-		);
+		filterFn?: (path: string) => boolean,
+	): Record<string, string> {
+		const files = contentTree.tree ?? [];
 		const hashes: Record<string, string> = {};
 
-		for (const note of notes) {
-			const vaultPath = note.path.replace(
-				this.settings.contentFolder,
-				"",
+		for (const item of files) {
+			if (
+				typeof item.path !== "string" ||
+				!item.path.startsWith(this.settings.contentFolder) ||
+				item.type !== "blob"
+			) {
+				continue;
+			}
+
+			if (filterFn && !filterFn(item.path)) {
+				continue;
+			}
+
+			const vaultPath = removeLeadingSlash(
+				item.path.replace(this.settings.contentFolder, ""),
 			);
 
-			const actualVaultPath = vaultPath.startsWith("/")
-				? vaultPath.substring(1)
-				: vaultPath;
-			hashes[actualVaultPath] = note.oid;
+			hashes[vaultPath] = item.oid;
 		}
 
 		return hashes;
+	}
+
+	async getNoteHashes(
+		contentTree: NonNullable<TRepositoryContent>,
+	): Promise<Record<string, string>> {
+		return this.extractHashesFromTree(
+			contentTree,
+			(path) =>
+				path.endsWith(".md") ||
+				(this.settings.useBases && path.endsWith(".base")) ||
+				(this.settings.useCanvas && path.endsWith(".canvas")),
+		);
 	}
 
 	/**
@@ -156,29 +154,7 @@ export default class QuartzSyncerSiteManager {
 	async getBlobHashes(
 		contentTree: NonNullable<TRepositoryContent>,
 	): Promise<Record<string, string>> {
-		const files = contentTree.tree ?? [];
-
-		const blobs = files.filter(
-			(x): x is ContentTreeItem =>
-				typeof x.path === "string" &&
-				x.path.startsWith(this.settings.contentFolder) &&
-				x.type === "blob",
-		);
-		const hashes: Record<string, string> = {};
-
-		for (const blob of blobs) {
-			const vaultPath = blob.path.replace(
-				this.settings.contentFolder,
-				"",
-			);
-
-			const actualVaultPath = vaultPath.startsWith("/")
-				? vaultPath.substring(1)
-				: vaultPath;
-			hashes[actualVaultPath] = blob.oid;
-		}
-
-		return hashes;
+		return this.extractHashesFromTree(contentTree);
 	}
 
 	async getQuartzVersion(): Promise<QuartzVersion> {

@@ -38,6 +38,29 @@ export type TPublishedFrontMatter = Record<string, unknown> & {
  *
  * Documentation: {@link https://saberzero1.github.io/quartz-syncer-docs/Settings/Note-properties/}
  */
+/**
+ * Parse a frontmatter value that may be a comma-separated string or an array.
+ * Returns a flat array of non-empty strings.
+ *
+ * @param value - The raw frontmatter value (string, string[], or unknown).
+ * @param separator - The regex to split string values on (default: comma with optional whitespace).
+ * @returns An array of non-empty strings.
+ */
+function parseStringOrArray(
+	value: unknown,
+	separator: RegExp = /,\s*/,
+): string[] {
+	if (typeof value === "string") {
+		return value.split(separator).filter(Boolean);
+	}
+
+	if (Array.isArray(value)) {
+		return value as string[];
+	}
+
+	return [];
+}
+
 export class FrontmatterCompiler {
 	private readonly settings: QuartzSyncerSettings;
 
@@ -122,30 +145,10 @@ export class FrontmatterCompiler {
 				}
 
 				if (baseFrontMatter["aliases"] || baseFrontMatter["alias"]) {
-					const aliases: string[] = [];
-					const aliasesValue = baseFrontMatter["aliases"] as unknown;
-
-					if (typeof baseFrontMatter["aliases"] === "string") {
-						aliases.push(
-							...baseFrontMatter["aliases"]
-								.split(/,\s*/)
-								.filter(Boolean),
-						);
-					} else if (Array.isArray(aliasesValue)) {
-						aliases.push(...(aliasesValue as string[]));
-					}
-
-					const aliasValue = baseFrontMatter["alias"];
-
-					if (typeof baseFrontMatter["alias"] === "string") {
-						aliases.push(
-							...baseFrontMatter["alias"]
-								.split(/,\s*/)
-								.filter(Boolean),
-						);
-					} else if (Array.isArray(aliasValue)) {
-						aliases.push(...(aliasValue as string[]));
-					}
+					const aliases = [
+						...parseStringOrArray(baseFrontMatter["aliases"]),
+						...parseStringOrArray(baseFrontMatter["alias"]),
+					];
 
 					if (aliases.length > 0) {
 						publishedFrontMatter["aliases"] = [...new Set(aliases)];
@@ -201,36 +204,13 @@ export class FrontmatterCompiler {
 		const publishedFrontMatter = { ...publishedFrontMatterWithoutTags };
 
 		if (fileFrontMatter) {
-			const tags =
-				(typeof fileFrontMatter["tags"] === "string"
-					? fileFrontMatter["tags"].split(/,\s*/).filter(Boolean)
-					: fileFrontMatter["tags"]) || [];
+			const tags = [
+				...parseStringOrArray(fileFrontMatter["tags"]),
+				...parseStringOrArray(fileFrontMatter["tag"]),
+			];
 
 			if (tags.length > 0) {
-				publishedFrontMatter["tags"] = tags;
-			}
-
-			if (fileFrontMatter["tag"] !== undefined) {
-				if (typeof fileFrontMatter["tag"] === "string") {
-					publishedFrontMatter["tags"] = [
-						...(publishedFrontMatter["tags"] ?? []),
-						...fileFrontMatter["tag"].split(/,\s*/).filter(Boolean),
-					];
-				} else if (Array.isArray(fileFrontMatter["tag"])) {
-					const tagValue = fileFrontMatter["tag"] as unknown;
-
-					publishedFrontMatter["tags"] = [
-						...(publishedFrontMatter["tags"] ?? []),
-						...(tagValue as string[]),
-					];
-				}
-			}
-
-			// remove duplicates
-			if (publishedFrontMatter["tags"]) {
-				publishedFrontMatter["tags"] = [
-					...new Set(publishedFrontMatter["tags"]),
-				];
+				publishedFrontMatter["tags"] = [...new Set(tags)];
 			}
 		}
 
@@ -242,41 +222,16 @@ export class FrontmatterCompiler {
 		newFrontMatter: TPublishedFrontMatter,
 	) {
 		const publishedFrontMatter = { ...newFrontMatter };
-		const cssclasses: string[] = [];
 
 		if (baseFrontMatter) {
-			const cssclassesValue = baseFrontMatter["cssclasses"];
+			const cssclasses = [
+				...parseStringOrArray(baseFrontMatter["cssclasses"], /\s+/),
+				...parseStringOrArray(baseFrontMatter["cssclass"], /\s+/),
+			];
 
-			if (baseFrontMatter["cssclasses"] !== undefined) {
-				if (typeof baseFrontMatter["cssclasses"] === "string") {
-					cssclasses.push(
-						...baseFrontMatter["cssclasses"]
-							.split(/\s+/)
-							.filter(Boolean),
-					);
-				} else if (Array.isArray(cssclassesValue)) {
-					cssclasses.push(...(cssclassesValue as string[]));
-				}
+			if (cssclasses.length > 0) {
+				publishedFrontMatter["cssclasses"] = [...new Set(cssclasses)];
 			}
-
-			const cssclassValue = baseFrontMatter["cssclass"];
-
-			if (baseFrontMatter["cssclass"] !== undefined) {
-				if (typeof baseFrontMatter["cssclass"] === "string") {
-					cssclasses.push(
-						...baseFrontMatter["cssclass"]
-							.split(/\s+/)
-							.filter(Boolean),
-					);
-				} else if (Array.isArray(cssclassValue)) {
-					cssclasses.push(...(cssclassValue as string[]));
-				}
-			}
-		}
-
-		// remove duplicates
-		if (cssclasses.length > 0) {
-			publishedFrontMatter["cssclasses"] = [...new Set(cssclasses)];
 		}
 
 		return publishedFrontMatter;

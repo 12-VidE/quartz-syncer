@@ -1,7 +1,12 @@
 import type QuartzSyncer from "main";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
-import { validatePreFlight } from "../validators";
+import {
+	checkPreFlight,
+	createConnection,
+	getErrorMessage,
+	parseVerboseFlags,
+} from "../handlerUtils";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 
 const COMMAND = "quartz-syncer:test";
@@ -23,24 +28,14 @@ export function createTestHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (validationError) {
-					return formatCliOutput(
-						params,
-						cliError(COMMAND, validationError),
-					);
-				}
+				if (preFlightError) return preFlightError;
 
 				const gitSettings = plugin.getGitSettingsWithSecret();
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
-				const connection = new RepositoryConnection({
-					gitSettings,
-					contentFolder: plugin.settings.contentFolder,
-					vaultPath: plugin.settings.vaultPath,
-				});
+				const connection = createConnection(plugin);
 
 				const canRead = await connection.testConnection();
 
@@ -92,10 +87,7 @@ export function createTestHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

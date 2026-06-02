@@ -107,6 +107,13 @@ function getSyncerPathForNote(
 }
 
 /**
+ * Removes a leading forward slash from a path string if present.
+ */
+export function removeLeadingSlash(path: string): string {
+	return path.startsWith("/") ? path.slice(1) : path;
+}
+
+/**
  * Escapes special characters in a string for use in a regular expression.
  * This is useful to prevent regex injection attacks or unintended matches.
  *

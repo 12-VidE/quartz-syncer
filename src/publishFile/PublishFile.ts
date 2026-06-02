@@ -19,6 +19,29 @@ import {
 import { hasDynamicContent } from "src/utils/dynamicContent";
 
 /**
+ * Determines the special file type from a TFile, if any.
+ * Returns the type string or null for regular markdown files.
+ */
+export function getSpecialFileType(file: {
+	extension: string;
+	path: string;
+	name: string;
+}): "base" | "canvas" | "excalidraw" | null {
+	if (file.extension === "base") return "base";
+
+	if (file.extension === "canvas") return "canvas";
+
+	if (
+		file.name.endsWith(".excalidraw") ||
+		file.name.endsWith(".excalidraw.md")
+	) {
+		return "excalidraw";
+	}
+
+	return null;
+}
+
+/**
  * IPublishFileProps interface.
  * This interface defines the properties required to create a PublishFile instance.
  */
@@ -169,20 +192,13 @@ export class PublishFile {
 	 * @returns true if the file should be published, false otherwise.
 	 */
 	shouldPublish(): boolean {
-		if (this.file.extension === "base") {
-			return this.settings.useBases;
-		}
+		const specialType = getSpecialFileType(this.file);
 
-		if (this.file.extension === "canvas") {
-			return this.settings.useCanvas;
-		}
+		if (specialType === "base") return this.settings.useBases;
 
-		if (
-			this.file.name.endsWith(".excalidraw") ||
-			this.file.name.endsWith(".excalidraw.md")
-		) {
-			return this.settings.useExcalidraw;
-		}
+		if (specialType === "canvas") return this.settings.useCanvas;
+
+		if (specialType === "excalidraw") return this.settings.useExcalidraw;
 
 		return hasPublishFlag(
 			this.settings.publishFrontmatterKey,

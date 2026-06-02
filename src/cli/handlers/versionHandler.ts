@@ -2,7 +2,12 @@ import type QuartzSyncer from "main";
 import { apiVersion } from "obsidian";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
-import { validatePreFlight } from "../validators";
+import {
+	checkPreFlight,
+	createConnection,
+	getErrorMessage,
+	parseVerboseFlags,
+} from "../handlerUtils";
 import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
 import { QuartzVersionDetector } from "src/quartz/QuartzVersionDetector";
 
@@ -32,8 +37,7 @@ export function createVersionHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
 				const pluginVersion = plugin.appVersion;
 				const obsidianVersion = apiVersion ?? "unknown";
@@ -42,16 +46,10 @@ export function createVersionHandler(
 				let quartzVersion: string | null = null;
 				let connection: RepositoryConnection | null = null;
 
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (!validationError) {
-					const gitSettings = plugin.getGitSettingsWithSecret();
-
-					connection = new RepositoryConnection({
-						gitSettings,
-						contentFolder: plugin.settings.contentFolder,
-						vaultPath: plugin.settings.vaultPath,
-					});
+				if (!preFlightError) {
+					connection = createConnection(plugin);
 
 					quartzFormat =
 						await QuartzVersionDetector.detectQuartzVersion(
@@ -102,10 +100,7 @@ export function createVersionHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

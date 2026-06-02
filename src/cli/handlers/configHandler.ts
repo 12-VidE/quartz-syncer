@@ -4,6 +4,12 @@ import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
 import QuartzSyncerSettings from "src/models/settings";
 import { flattenObject, getValueByPath, setValueByPath } from "../configUtils";
+import {
+	getErrorMessage,
+	getStringParam,
+	parseConfigValue,
+	parseVerboseFlags,
+} from "../handlerUtils";
 
 const COMMAND = "quartz-syncer:config";
 
@@ -69,21 +75,6 @@ function redactSettings(
 	return redacted;
 }
 
-function parseValue(
-	expectedType: "string" | "boolean",
-	raw: string,
-): string | boolean | null {
-	if (expectedType === "string") {
-		return raw;
-	}
-
-	if (raw === "true") return true;
-
-	if (raw === "false") return false;
-
-	return null;
-}
-
 export function createConfigHandler(
 	register: RegisterFn,
 	plugin: QuartzSyncer,
@@ -94,11 +85,9 @@ export function createConfigHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
-				const action =
-					typeof params.action === "string" ? params.action : "list";
+				const action = getStringParam(params, "action", "list");
 
 				const hasToken =
 					!!plugin.getGitSettingsWithSecret().auth?.secret;
@@ -121,7 +110,7 @@ export function createConfigHandler(
 					);
 				}
 
-				const key = typeof params.key === "string" ? params.key : "";
+				const key = getStringParam(params, "key");
 
 				if (!key) {
 					return formatCliOutput(
@@ -199,7 +188,7 @@ export function createConfigHandler(
 					}
 					const rawValue = params.value;
 
-					const parsed = parseValue(expectedType, rawValue);
+					const parsed = parseConfigValue(expectedType, rawValue);
 
 					if (parsed === null) {
 						return formatCliOutput(
@@ -280,10 +269,7 @@ export function createConfigHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

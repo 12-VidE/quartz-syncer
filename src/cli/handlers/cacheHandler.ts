@@ -2,6 +2,12 @@ import type QuartzSyncer from "main";
 import { normalizePath } from "obsidian";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
+import {
+	getErrorMessage,
+	getStringParam,
+	parseVerboseFlags,
+	pluralize,
+} from "../handlerUtils";
 
 const COMMAND = "quartz-syncer:cache";
 
@@ -40,11 +46,9 @@ export function createCacheHandler(
 					);
 				}
 
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
-				const action =
-					typeof params.action === "string" ? params.action : "";
+				const action = getStringParam(params, "action");
 
 				if (!action) {
 					return formatCliOutput(
@@ -65,9 +69,10 @@ export function createCacheHandler(
 						lastUpdated,
 					};
 
-					const baseMessage = `Cache contains ${files.length} file${
-						files.length === 1 ? "" : "s"
-					}.`;
+					const baseMessage = `Cache contains ${files.length} ${pluralize(
+						files.length,
+						"file",
+					)}.`;
 
 					const message =
 						includeVerbose && files.length > 0
@@ -84,8 +89,7 @@ export function createCacheHandler(
 				}
 
 				if (action === "clear") {
-					const rawPath =
-						typeof params.path === "string" ? params.path : "";
+					const rawPath = getStringParam(params, "path");
 
 					if (!rawPath) {
 						return formatCliOutput(
@@ -151,10 +155,7 @@ export function createCacheHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

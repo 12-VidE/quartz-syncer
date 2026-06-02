@@ -1,11 +1,15 @@
 import type QuartzSyncer from "main";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
-import { validatePreFlight } from "../validators";
-import { CliProgressController } from "../cliProgressController";
-import Publisher from "src/publisher/Publisher";
-import PublishStatusManager from "src/publisher/PublishStatusManager";
-import QuartzSyncerSiteManager from "src/repositoryConnection/QuartzSyncerSiteManager";
+import {
+	buildVerboseMessage,
+	checkPreFlight,
+	filterDeletedBlobs,
+	getErrorMessage,
+	initPublishStatus,
+	parseVerboseFlags,
+	pluralize,
+} from "../handlerUtils";
 
 const COMMAND = "quartz-syncer:sync";
 
@@ -32,59 +36,23 @@ export function createSyncHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (validationError) {
-					return formatCliOutput(
-						params,
-						cliError(COMMAND, validationError),
-					);
-				}
+				if (preFlightError) return preFlightError;
 
 				const startTime = Date.now();
 				const dryRun = params["dry-run"] === "true";
 				const force = params.force === "true";
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
-				const siteManager = new QuartzSyncerSiteManager(
-					plugin.app.metadataCache,
-					plugin.settings,
-					plugin.getGitSettingsWithSecret(),
-				);
-
-				const publisher = new Publisher(
-					plugin.app,
-					plugin,
-					plugin.app.vault,
-					plugin.app.metadataCache,
-					plugin.settings,
-					plugin.datastore,
-					plugin.extendedCache,
-				);
-
-				const statusManager = new PublishStatusManager(
-					siteManager,
-					publisher,
-				);
-				const controller = new CliProgressController();
-				const status = await statusManager.getPublishStatus(controller);
+				const { publisher, status } = await initPublishStatus(plugin);
 
 				const filesToPublish = [
 					...status.unpublishedNotes,
 					...status.changedNotes,
 				];
 
-				const notePaths = new Set([
-					...status.unpublishedNotes.map((f) => f.getPath()),
-					...status.changedNotes.map((f) => f.getPath()),
-					...status.publishedNotes.map((f) => f.getPath()),
-					...status.deletedNotePaths.map((p) => p.path),
-				]);
-
-				const filteredDeletedBlobs = status.deletedBlobPaths.filter(
-					(p) => !notePaths.has(p.path),
-				);
+				const filteredDeletedBlobs = filterDeletedBlobs(status);
 
 				const deletions = [
 					...status.deletedNotePaths.map((p) => p.path),
@@ -102,56 +70,29 @@ export function createSyncHandler(
 					},
 				};
 
-				const buildVerboseMessage = (
-					published: string[],
-					deleted: string[],
-					skipped: string[],
-					fallback: string,
-				): string => {
-					if (!includeVerbose) {
-						return fallback;
-					}
-					const lines: string[] = [];
-
-					if (published.length > 0) {
-						lines.push(
-							`Published ${published.length} file${
-								published.length === 1 ? "" : "s"
-							}:`,
-						);
-						lines.push(...published.map((path) => `\t${path}`));
-					}
-
-					if (deleted.length > 0) {
-						lines.push(
-							`Deleted ${deleted.length} file${
-								deleted.length === 1 ? "" : "s"
-							}:`,
-						);
-						lines.push(...deleted.map((path) => `\t${path}`));
-					}
-
-					if (skipped.length > 0) {
-						lines.push(
-							`Skipped ${skipped.length} deletion${
-								skipped.length === 1 ? "" : "s"
-							}:`,
-						);
-						lines.push(...skipped.map((path) => `\t${path}`));
-					}
-
-					return lines.length > 0 ? lines.join("\n") : fallback;
-				};
-
 				if (dryRun) {
 					data.summary.deleted = deletions.length;
 
 					const baseMessage = `Dry run: ${data.summary.published} to publish, ${deletions.length} to delete.`;
 
 					const message = buildVerboseMessage(
-						data.publish,
-						data.delete,
-						[],
+						includeVerbose,
+						[
+							{
+								label: `Published ${data.publish.length} ${pluralize(
+									data.publish.length,
+									"file",
+								)}:`,
+								items: data.publish,
+							},
+							{
+								label: `Deleted ${data.delete.length} ${pluralize(
+									data.delete.length,
+									"file",
+								)}:`,
+								items: data.delete,
+							},
+						],
 						baseMessage,
 					);
 
@@ -171,7 +112,24 @@ export function createSyncHandler(
 						params,
 						cliSuccess(
 							COMMAND,
-							buildVerboseMessage([], [], [], "Nothing to sync."),
+							buildVerboseMessage(
+								includeVerbose,
+								[
+									{
+										label: `Published 0 ${pluralize(0, "file")}:`,
+										items: [],
+									},
+									{
+										label: `Deleted 0 ${pluralize(0, "file")}:`,
+										items: [],
+									},
+									{
+										label: `Skipped 0 ${pluralize(0, "deletion")}:`,
+										items: [],
+									},
+								],
+								"Nothing to sync.",
+							),
 							data,
 							Date.now() - startTime,
 						),
@@ -213,19 +171,19 @@ export function createSyncHandler(
 				data.summary.skippedDeletes = skippedDeletes.length;
 
 				const messageParts = [
-					`Published ${filesToPublish.length} file${
-						filesToPublish.length === 1 ? "" : "s"
-					}`,
-					`Deleted ${deletedCount} file${
-						deletedCount === 1 ? "" : "s"
-					}`,
+					`Published ${filesToPublish.length} ${pluralize(
+						filesToPublish.length,
+						"file",
+					)}`,
+					`Deleted ${deletedCount} ${pluralize(deletedCount, "file")}`,
 				];
 
 				if (skippedDeletes.length > 0) {
 					messageParts.push(
-						`Skipped ${skippedDeletes.length} deletion${
-							skippedDeletes.length === 1 ? "" : "s"
-						} (use force)`,
+						`Skipped ${skippedDeletes.length} ${pluralize(
+							skippedDeletes.length,
+							"deletion",
+						)} (use force)`,
 					);
 				}
 
@@ -234,9 +192,30 @@ export function createSyncHandler(
 				const actuallyDeleted = force ? deletions : [];
 
 				const message = buildVerboseMessage(
-					data.publish,
-					actuallyDeleted,
-					skippedDeletes,
+					includeVerbose,
+					[
+						{
+							label: `Published ${data.publish.length} ${pluralize(
+								data.publish.length,
+								"file",
+							)}:`,
+							items: data.publish,
+						},
+						{
+							label: `Deleted ${actuallyDeleted.length} ${pluralize(
+								actuallyDeleted.length,
+								"file",
+							)}:`,
+							items: actuallyDeleted,
+						},
+						{
+							label: `Skipped ${skippedDeletes.length} ${pluralize(
+								skippedDeletes.length,
+								"deletion",
+							)}:`,
+							items: skippedDeletes,
+						},
+					],
 					baseMessage,
 				);
 
@@ -247,10 +226,7 @@ export function createSyncHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

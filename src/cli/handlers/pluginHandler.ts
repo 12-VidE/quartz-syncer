@@ -1,8 +1,13 @@
 import type QuartzSyncer from "main";
 import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
-import { validatePreFlight } from "../validators";
-import { RepositoryConnection } from "src/repositoryConnection/RepositoryConnection";
+import {
+	checkPreFlight,
+	createConnection,
+	getErrorMessage,
+	parseVerboseFlags,
+	pluralize,
+} from "../handlerUtils";
 import { QuartzConfigService } from "src/quartz/QuartzConfigService";
 import {
 	QuartzPluginManager,
@@ -40,15 +45,7 @@ const FLAGS: CliFlags = {
 };
 
 function createConfigService(plugin: QuartzSyncer): QuartzConfigService {
-	const gitSettings = plugin.getGitSettingsWithSecret();
-
-	const connection = new RepositoryConnection({
-		gitSettings,
-		contentFolder: plugin.settings.contentFolder,
-		vaultPath: plugin.settings.vaultPath,
-	});
-
-	return new QuartzConfigService(connection);
+	return new QuartzConfigService(createConnection(plugin));
 }
 
 function formatPluginList(
@@ -124,8 +121,7 @@ export function createPluginHandler(
 		FLAGS,
 		async (params: CliData): Promise<string> => {
 			try {
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 
 				const action =
 					typeof params.action === "string" ? params.action : "list";
@@ -142,14 +138,9 @@ export function createPluginHandler(
 					);
 				}
 
-				const validationError = validatePreFlight(plugin);
+				const preFlightError = checkPreFlight(plugin, params, COMMAND);
 
-				if (validationError) {
-					return formatCliOutput(
-						params,
-						cliError(COMMAND, validationError),
-					);
-				}
+				if (preFlightError) return preFlightError;
 
 				const configService = createConfigService(plugin);
 				const config = await configService.readConfig();
@@ -242,9 +233,10 @@ export function createPluginHandler(
 							params,
 							cliError(
 								COMMAND,
-								`${updatable.length} plugin${
-									updatable.length === 1 ? "" : "s"
-								} can be updated (${names}). Use 'force' to apply.`,
+								`${updatable.length} ${pluralize(
+									updatable.length,
+									"plugin",
+								)} can be updated (${names}). Use 'force' to apply.`,
 							),
 						);
 					}
@@ -276,16 +268,18 @@ export function createPluginHandler(
 
 					await configService.writeLockFile(
 						newLockFile,
-						`Update ${updatable.length} plugin${
-							updatable.length === 1 ? "" : "s"
-						}`,
+						`Update ${updatable.length} ${pluralize(
+							updatable.length,
+							"plugin",
+						)}`,
 					);
 
 					const updatedNames = updatable.map((u) => u.name);
 
-					const message = `Updated ${updatable.length} plugin${
-						updatable.length === 1 ? "" : "s"
-					}: ${updatedNames.join(", ")}.`;
+					const message = `Updated ${updatable.length} ${pluralize(
+						updatable.length,
+						"plugin",
+					)}: ${updatedNames.join(", ")}.`;
 
 					return formatCliOutput(
 						params,
@@ -381,10 +375,7 @@ export function createPluginHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},

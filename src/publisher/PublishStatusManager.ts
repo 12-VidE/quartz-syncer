@@ -17,24 +17,6 @@ export default class PublishStatusManager implements IPublishStatusManager {
 		this.publisher = publisher;
 	}
 
-	/**
-	 * Gets the paths of deleted notes.
-	 *
-	 * @returns A promise that resolves to an array of deleted note paths.
-	 */
-	getDeletedNotePaths(): Promise<string[]> {
-		throw new Error("Method not implemented.");
-	}
-
-	/**
-	 * Gets the paths of deleted blobs.
-	 *
-	 * @returns A promise that resolves to an array of deleted blob paths.
-	 */
-	getDeletedBlobsPaths(): Promise<string[]> {
-		throw new Error("Method not implemented.");
-	}
-
 	private generateDeletedContentPaths(
 		remoteNoteHashes: { [key: string]: string },
 		marked: string[],
@@ -276,9 +258,6 @@ export default class PublishStatusManager implements IPublishStatusManager {
 			...this.generateDeletedContentPaths(remoteBlobHashes, marked.blobs),
 		);
 
-		// These might already be sorted, as getFilesMarkedForPublishing sorts already
-		publishedNotes.sort((a, b) => a.compare(b));
-		changedNotes.sort((a, b) => a.compare(b));
 		deletedNotePaths.sort((a, b) => a.path.localeCompare(b.path));
 
 		return {

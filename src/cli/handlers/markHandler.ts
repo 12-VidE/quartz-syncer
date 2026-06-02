@@ -3,6 +3,7 @@ import { CliData, CliFlags, RegisterFn } from "../types";
 import { formatCliOutput, cliSuccess, cliError } from "../formatOutput";
 import { resolvePathPattern } from "../pathResolver";
 import ObsidianFrontMatterEngine from "src/publishFile/ObsidianFrontMatterEngine";
+import { getErrorMessage, parseVerboseFlags, pluralize } from "../handlerUtils";
 
 const COMMAND = "quartz-syncer:mark";
 
@@ -77,8 +78,7 @@ export function createMarkHandler(
 				}
 
 				const dryRun = params["dry-run"] === "true";
-				const verbose = params.verbose === "true";
-				const includeVerbose = verbose && params.format !== "json";
+				const { includeVerbose } = parseVerboseFlags(params);
 				const resolved = resolvePathPattern(plugin.app, pathPattern);
 
 				const vaultPath = plugin.settings.vaultPath;
@@ -151,10 +151,7 @@ export function createMarkHandler(
 					} catch (error) {
 						failed.push({
 							path: file.path,
-							error:
-								error instanceof Error
-									? error.message
-									: String(error),
+							error: getErrorMessage(error),
 						});
 					}
 				}
@@ -171,20 +168,23 @@ export function createMarkHandler(
 
 				const messageParts = [
 					dryRun
-						? `Dry run: ${updated.length} file${
-								updated.length === 1 ? "" : "s"
-							} matched`
-						: `Updated ${updated.length} file${
-								updated.length === 1 ? "" : "s"
-							}`,
+						? `Dry run: ${updated.length} ${pluralize(
+								updated.length,
+								"file",
+							)} matched`
+						: `Updated ${updated.length} ${pluralize(
+								updated.length,
+								"file",
+							)}`,
 					`Mode: ${resolved.mode}`,
 				];
 
 				if (failed.length > 0) {
 					messageParts.push(
-						`Failed: ${failed.length} file${
-							failed.length === 1 ? "" : "s"
-						}`,
+						`Failed: ${failed.length} ${pluralize(
+							failed.length,
+							"file",
+						)}`,
 					);
 				}
 
@@ -226,10 +226,7 @@ export function createMarkHandler(
 			} catch (error) {
 				return formatCliOutput(
 					params,
-					cliError(
-						COMMAND,
-						error instanceof Error ? error.message : String(error),
-					),
+					cliError(COMMAND, getErrorMessage(error)),
 				);
 			}
 		},
