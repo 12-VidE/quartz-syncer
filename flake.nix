@@ -89,7 +89,7 @@
           buildInputs =
             with pkgs;
             [
-              nodejs_22
+              nodejs_24
               git
               python3
             ]
