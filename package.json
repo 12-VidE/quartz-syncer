@@ -68,7 +68,6 @@
 		"buffer": "^6.0.3",
 		"diff": "^8.0.4",
 		"isomorphic-git": "^1.36.1",
-		"js-logger": "^1.6.1",
 		"localspace": "^1.2.0",
 		"minimatch": "^10.2.5",
 		"obsidian-extended-metadatacache": "^0.5.1",
